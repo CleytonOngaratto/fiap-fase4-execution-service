@@ -1,0 +1,30 @@
+common:
+  app_name: execution-service
+
+  log_file_name: STDOUT
+  log_level: info
+
+  distributed_tracing:
+    enabled: true
+
+  application_logging:
+    enabled: true
+
+    forwarding:
+      enabled: true
+      log_level_denylist: TRACE,DEBUG,FINE,FINER,FINEST
+      context_data:
+        enabled: true
+        include: traceId
+      labels:
+        enabled: true
+
+    # Desligado: anexaria um carimbo depois do } do log JSON.
+    local_decorating:
+      enabled: false
+
+    metrics:
+      enabled: true
+
+  labels:
+    project: fiap-fase4

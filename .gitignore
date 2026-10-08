@@ -1,98 +1,131 @@
-# Maven
+# ============================================================================
+# .gitignore — serviço Quarkus da Fase 4 (mesmo modelo nos 3 serviços)
+# Regra: comentário sempre em linha própria — no .gitignore, texto depois de um
+# padrão faz parte do padrão.
+# ============================================================================
+
+# ---------------------------------------------------------------------------
+# Build — Maven / Quarkus
+# ---------------------------------------------------------------------------
 target/
 pom.xml.tag
 pom.xml.releaseBackup
 pom.xml.versionsBackup
 release.properties
 .flattened-pom.xml
+/build/
+/.quarkus/
+/out/
+# O wrapper do Maven (.mvn/wrapper/*) é versionado; só o maven-wrapper.jar baixado fica fora,
+# pelo .gitignore que já existe dentro de .mvn/wrapper/.
 
-# Eclipse
-.project
-.classpath
-.settings/
-bin/
-
-# IntelliJ
+# ---------------------------------------------------------------------------
+# IDEs e sistema operacional
+# ---------------------------------------------------------------------------
 .idea
 *.ipr
 *.iml
 *.iws
-
-# NetBeans
+.project
+.classpath
+.settings/
+# Saída do Eclipse. Ancorado na raiz: sem a barra, uma pasta "bin" legítima em qualquer nível
+# seria ignorada em silêncio.
+/bin/
 nb-configuration.xml
-
-# Visual Studio Code
 .vscode
 .factorypath
-
-# OSX
 .DS_Store
-
-# Vim
+Thumbs.db
+ehthumbs.db
+desktop.ini
+$RECYCLE.BIN/
 *.swp
 *.swo
-
-# patch
+*~
 *.orig
 *.rej
+*.bak
 
-# Local environment
-.env
-
-# Plugin directory
-/.quarkus/cli/plugins/
-
-# TLS Certificates
-.certs/
-
-# Logs
+# ---------------------------------------------------------------------------
+# Logs e dumps da JVM
+# ---------------------------------------------------------------------------
 *.log
 hs_err_pid*
+replay_pid*
+# Core dumps. Ancorado: o padrão genérico "core" ignoraria em silêncio qualquer pacote Java
+# chamado core/.
+/core
+/core.[0-9]*
 
-# Quarkus build directories
-/build/
-/.quarkus/
-
-# IntelliJ output
-/out/
-
-# Windows thumbnail cache
-Thumbs.db
-
-# Editor backup files (common on Linux)
-*~
-
-# Core dump files
-core
-core.*
-
-# Docker
+# ---------------------------------------------------------------------------
+# Ambiente local
+# ---------------------------------------------------------------------------
+.env
+.env.*
+!.env.example
+.certs/
 docker-compose.override.yml
 docker-compose.override.yaml
 
-# ==========================================
-# IA / cockpit (moram na pasta-mãe, não neste repo)
-# ==========================================
-CLAUDE.md
-.claude/
-PLAN-FASE4.md
-PROGRESS-FASE4.md
-
-# ==========================================
-# Segredos e credenciais — nunca versionar
-# ==========================================
-# Chave pública do JWT vem do SSM (SecureString) em produção.
-# Um par de src/test/resources/ é descartável e segue versionado de propósito (fixture de teste).
-secrets/
-src/main/resources/*.pem
-
+# ---------------------------------------------------------------------------
+# Segredos e credenciais — NUNCA versionar
+# ---------------------------------------------------------------------------
+# Par RSA do JWT: em produção vem do SSM (SecureString) e é montado como volume no pod; em dev
+# fica em ./secrets/ (gerado com openssl). O par de src/test/resources/ é OUTRO, descartável, e
+# segue versionado de propósito: os testes assinam offline com ele.
+# /secrets/ é ancorado pelo mesmo motivo do /bin/; .secrets/ (oculta) vale em qualquer nível.
+/secrets/
 .secrets/
+src/main/resources/*.pem
+*.key
+*.p12
+*.pfx
+*.jks
 .aws/
 kubeconfig*
+newrelic.jar
+# Postman: a collection é versionada (docs/api/). Ambientes guardam token/JWT e ficam fora;
+# versiona-se só o modelo sanitizado *.example.postman_environment.json.
+*.postman_environment.json
+!*.example.postman_environment.json
+
+# ---------------------------------------------------------------------------
+# Terraform — a pasta terraform/ do serviço (banco, filas, target group)
+# ---------------------------------------------------------------------------
+.terraform/
 *.tfstate
 *.tfstate.*
-.terraform/
-newrelic.jar
+.terraform.tfstate.lock.info
+# Planos salvos carregam um retrato do state (IDs de conta, endpoints). "tfplan*" cobre também
+# nomes como tfplan.repo2 — na Fase 3 dois desses chegaram a ser versionados por engano.
+*.tfplan
+tfplan*
+crash.log
+crash.*.log
+backend.hcl
+terraform.tfvars
+*.auto.tfvars
+*.tfvars.json
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+# O .terraform.lock.hcl é versionado de propósito: o CI resolve os mesmos providers da máquina.
 
-# Artefato local do deploy (tag da última imagem publicada à mão) — é de máquina, não do projeto.
+# ---------------------------------------------------------------------------
+# Artefatos locais de deploy
+# ---------------------------------------------------------------------------
+# Tag da última imagem publicada à mão: é de máquina, não do projeto.
 .deploy-tag
+
+# ---------------------------------------------------------------------------
+# IA / cockpit (moram na pasta-mãe, não neste repo)
+# ---------------------------------------------------------------------------
+CLAUDE.md
+.claude/
+.handoff/
+PLAN-FASE4.md
+PROGRESS-FASE4.md
