@@ -1,12 +1,7 @@
-# O build é multi-stage: o contexto precisa de `pom.xml` + `src/`.
-# Tudo o que NÃO é necessário para buildar a imagem fica de fora.
-
-# Artefatos de build (a imagem builda no próprio container)
 target/
 build/
 .quarkus/
 
-# VCS / IDE
 .git/
 .gitignore
 .idea/
@@ -21,14 +16,12 @@ build/
 bin/
 out/
 
-# Infra / docs não usados no build da imagem
 *.md
 k8s/
 infra/
 .github/
 docs/
 
-# Ambiente / logs / OS
 .env
 *.log
 hs_err_pid*
@@ -37,6 +30,5 @@ Thumbs.db
 *.swp
 *.swo
 
-# F9: o par RSA nunca entra na imagem — em runtime vem de volume (Secret no k8s, bind mount no compose).
 secrets/
 *.pem

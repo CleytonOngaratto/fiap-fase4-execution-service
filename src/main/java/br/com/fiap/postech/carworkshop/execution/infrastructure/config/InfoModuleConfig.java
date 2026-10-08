@@ -6,10 +6,6 @@ import br.com.fiap.postech.carworkshop.execution.usecase.port.out.ServiceMetadat
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Produces;
 
-/**
- * CDI wiring for the info use case. The framework annotation lives HERE so the
- * {@link ServiceInfoInteractor} stays pure Java, dependencies injected by constructor.
- */
 @ApplicationScoped
 public class InfoModuleConfig {
 

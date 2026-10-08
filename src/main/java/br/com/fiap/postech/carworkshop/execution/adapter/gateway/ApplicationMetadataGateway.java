@@ -4,10 +4,6 @@ import br.com.fiap.postech.carworkshop.execution.usecase.port.out.ServiceMetadat
 import jakarta.enterprise.context.ApplicationScoped;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
-/**
- * Reads the name and version Quarkus exposes as configuration ({@code quarkus.application.*}; the version
- * comes from the pom at build time).
- */
 @ApplicationScoped
 public class ApplicationMetadataGateway implements ServiceMetadataPort {
 

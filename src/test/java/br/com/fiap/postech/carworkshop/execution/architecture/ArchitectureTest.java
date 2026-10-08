@@ -8,13 +8,6 @@ import org.junit.jupiter.api.Test;
 
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 
-/**
- * Architecture enforcement: trava as regras da Clean Architecture, no molde do OS Service.
- *
- * <p>All rules are <strong>strict</strong> (no {@code freeze}): this service is born clean, so any
- * violation breaks the build. Plain JUnit 5 {@code @Test} methods (not the ArchUnit JUnit engine) so
- * Surefire counts them. Only production classes are analysed ({@link ImportOption.DoNotIncludeTests}).</p>
- */
 class ArchitectureTest {
 
     private static JavaClasses productionClasses;
@@ -26,7 +19,6 @@ class ArchitectureTest {
                 .importPackages("br.com.fiap.postech.carworkshop.execution");
     }
 
-    /** Domain stays framework-free: no {@code jakarta.*}, {@code io.quarkus.*} or {@code org.hibernate.*}. */
     @Test
     void domain_is_framework_free() {
         noClasses()
@@ -46,7 +38,6 @@ class ArchitectureTest {
                 .check(productionClasses);
     }
 
-    /** Strict here (frozen in the OS Service, which inherited older code). */
     @Test
     void usecase_does_not_depend_on_adapter() {
         noClasses()
@@ -56,10 +47,6 @@ class ArchitectureTest {
                 .check(productionClasses);
     }
 
-    /**
-     * Domain and use cases know nothing of AWS (SQS, SNS, DynamoDB), Mercado Pago or New Relic: all of
-     * them stay behind ports/adapters.
-     */
     @Test
     void domain_and_usecase_do_not_know_external_providers() {
         noClasses()

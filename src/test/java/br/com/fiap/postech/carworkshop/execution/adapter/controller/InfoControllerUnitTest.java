@@ -6,7 +6,6 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-/** Controller logic without Quarkus; the HTTP contract is covered by {@link InfoControllerTest}. */
 class InfoControllerUnitTest {
 
     @Test

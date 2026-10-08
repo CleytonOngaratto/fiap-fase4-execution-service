@@ -1,13 +1,6 @@
-# Vive ao lado do newrelic.jar, em /deployments/newrelic/, que é onde o agente procura este arquivo.
-# O "porquê" de cada escolha está no README, em Observabilidade → New Relic APM (agente Java).
-# Sem stanza `production:`: o agente só mescla uma quando NEW_RELIC_ENVIRONMENT está setado.
-
 common:
   app_name: execution-service
 
-  # license_key chega por NEW_RELIC_LICENSE_KEY em runtime; sem ela a app sobe igual.
-
-  # Arquivo exigiria diretório gravável pelo uid 1001 e ficaria invisível ao `kubectl logs`.
   log_file_name: STDOUT
   log_level: info
 
@@ -20,21 +13,18 @@ common:
     forwarding:
       enabled: true
       log_level_denylist: TRACE,DEBUG,FINE,FINER,FINEST
-      # Default false, e sem isto o log sobe sem o MDC — ou seja, sem nada que ligue a linha à
-      # requisição que a gerou.
       context_data:
         enabled: true
         include: traceId
       labels:
         enabled: true
 
-    # Anexaria seu carimbo depois do `}` do nosso log JSON.
+    # Desligado: anexaria um carimbo depois do } do log JSON.
     local_decorating:
       enabled: false
 
     metrics:
       enabled: true
 
-  # Vai para a entidade APM e, via `forwarding.labels.enabled`, para cada log como `tags.project`.
   labels:
     project: fiap-fase4
