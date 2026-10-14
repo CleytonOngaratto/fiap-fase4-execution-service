@@ -1,0 +1,81 @@
+# image: __IMAGE__ é trocado no deploy; aplicado cru, o pod entra em ImagePullBackOff.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: execution-service
+  namespace: execution
+  labels:
+    app: execution-service
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: execution-service
+  template:
+    metadata:
+      labels:
+        app: execution-service
+      # newrelic.io/scrape: o job default do agente ignora em silêncio quem não está na allowlist dele.
+      annotations:
+        newrelic.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/execution/v1/q/metrics"
+    spec:
+      serviceAccountName: execution-service
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+      containers:
+        - name: execution-service
+          image: __IMAGE__
+          imagePullPolicy: Always
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          ports:
+            - name: http
+              containerPort: 8080
+          # O ALB segue mandando requisição por alguns segundos ao alvo que entrou em drenagem; sem a pausa, o rollout dá 5xx.
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sleep", "35"]
+          envFrom:
+            - configMapRef:
+                name: execution-service-config
+            - secretRef:
+                name: execution-service-app
+          startupProbe:
+            httpGet:
+              path: /execution/v1/q/health/live
+              port: 8080
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 30
+          livenessProbe:
+            httpGet:
+              path: /execution/v1/q/health/live
+              port: 8080
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /execution/v1/q/health/ready
+              port: 8080
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          resources:
+            requests:
+              # Obrigatório: o HPA calcula o % sobre o request de CPU.
+              cpu: 200m
+              # 896Mi pela aritmética do HPA: com menos, o scale-down trava acima de target × (n−1)/n.
+              memory: 896Mi
+            limits:
+              cpu: 500m
+              # Igual ao request; é o teto do heap da JVM (MaxRAMPercentage 25%).
+              memory: 896Mi

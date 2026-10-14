@@ -1,0 +1,21 @@
+apiVersion: elbv2.k8s.aws/v1beta1
+kind: TargetGroupBinding
+metadata:
+  name: execution-service
+  namespace: execution
+  labels:
+    app: execution-service
+spec:
+  targetType: ip
+  targetGroupARN: __TARGET_GROUP_ARN__
+  serviceRef:
+    name: execution-service
+    port: 80
+  networking:
+    ingress:
+      - from:
+          - securityGroup:
+              groupID: __ALB_SG_ID__
+        ports:
+          - port: 8080
+            protocol: TCP

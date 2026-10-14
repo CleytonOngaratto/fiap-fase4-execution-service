@@ -18,7 +18,7 @@ out/
 
 *.md
 k8s/
-infra/
+terraform/
 .github/
 docs/
 
