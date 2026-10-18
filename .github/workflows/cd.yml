@@ -90,35 +90,58 @@ jobs:
           ecr=$(read_param "/fase4/ecr/$SERVICE/repo-url")
           cluster=$(read_param /fase4/eks/cluster-name)
           alb_sg=$(read_param /fase4/alb/sg-id)
+          topic=$(read_param /fase4/sns/execution-events/topic-arn)
 
           {
             echo "ECR_REPO=$ecr"
             echo "CLUSTER_NAME=$cluster"
             echo "ALB_SG_ID=$alb_sg"
+            echo "EVENTS_TOPIC_ARN=$topic"
             echo "IMAGE=${ecr}:${GITHUB_SHA}"
           } >> "$GITHUB_ENV"
 
           echo "ECR     : $ecr"
           echo "cluster : $cluster"
+          echo "topico  : $topic"
 
       # Num merge com código e terraform/ os dois workflows rodam juntos: o deploy espera o target group existir.
       - name: Wait for the service contract (SSM)
         run: |
           set -euo pipefail
-          param="/fase4/$SERVICE/alb/target-group-arn"
+          params=(
+            "/fase4/$SERVICE/alb/target-group-arn"
+            "/fase4/$SERVICE/sqs/commands-queue-url"
+          )
           deadline=$((SECONDS + 1500))
 
-          until tg=$(aws ssm get-parameter --name "$param" --query Parameter.Value --output text 2>/dev/null); do
+          while :; do
+            missing=()
+            for p in "${params[@]}"; do
+              aws ssm get-parameter --name "$p" > /dev/null 2>&1 || missing+=("$p")
+            done
+            if [ "${#missing[@]}" -eq 0 ]; then
+              break
+            fi
             if [ "$SECONDS" -ge "$deadline" ]; then
-              echo "::error::SSM: parametro '$param' ausente depois de 25 min. Quem publica: o terraform.yml deste repositorio (terraform/)."
+              for p in "${missing[@]}"; do
+                echo "::error::SSM: parametro '$p' ausente depois de 25 min. Quem publica: o terraform.yml deste repositorio (terraform/)."
+              done
               exit 1
             fi
-            echo "aguardando: $param"
+            echo "aguardando: ${missing[*]}"
             sleep 20
           done
 
-          echo "TARGET_GROUP_ARN=$tg" >> "$GITHUB_ENV"
-          echo "target group: $tg"
+          tg=$(aws ssm get-parameter --name "/fase4/$SERVICE/alb/target-group-arn" --query Parameter.Value --output text)
+          queue=$(aws ssm get-parameter --name "/fase4/$SERVICE/sqs/commands-queue-url" --query Parameter.Value --output text)
+
+          {
+            echo "TARGET_GROUP_ARN=$tg"
+            echo "COMMANDS_QUEUE_URL=$queue"
+          } >> "$GITHUB_ENV"
+
+          echo "target group : $tg"
+          echo "fila         : $queue"
 
       - name: Log in to Amazon ECR
         uses: aws-actions/amazon-ecr-login@03f1aad4c6c7ffd436567f42f9384779290529bd # v2.1.7
@@ -147,7 +170,16 @@ jobs:
           set -euo pipefail
           kubectl apply -f "$MANIFESTS/namespace.yaml"
           kubectl apply -f "$MANIFESTS/serviceaccount.yaml"
-          kubectl apply -f "$MANIFESTS/configmap.yaml"
+
+          for placeholder in __EXECUTION_COMMANDS_QUEUE_URL__ __EXECUTION_EVENTS_TOPIC_ARN__; do
+            if ! grep -q "$placeholder" "$MANIFESTS/configmap.yaml"; then
+              echo "::error::configmap.yaml sem o placeholder $placeholder - alguem hardcodou o valor?"
+              exit 1
+            fi
+          done
+          sed -e "s|__EXECUTION_COMMANDS_QUEUE_URL__|${COMMANDS_QUEUE_URL}|" \
+              -e "s|__EXECUTION_EVENTS_TOPIC_ARN__|${EVENTS_TOPIC_ARN}|" \
+            "$MANIFESTS/configmap.yaml" | kubectl apply -f -
 
       - name: Render Secrets from SSM
         run: |

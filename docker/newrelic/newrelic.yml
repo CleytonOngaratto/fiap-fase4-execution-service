@@ -15,7 +15,7 @@ common:
       log_level_denylist: TRACE,DEBUG,FINE,FINER,FINEST
       context_data:
         enabled: true
-        include: traceId
+        include: traceId,correlationId,sagaId
       labels:
         enabled: true
 
