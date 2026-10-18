@@ -7,3 +7,13 @@ output "listener_rule_path" {
   description = "Caminho que a regra do ALB interno encaminha para este serviço."
   value       = "${local.path_prefix}/*"
 }
+
+output "commands_queue_url" {
+  description = "Fila de comandos que o orquestrador do OS Service escreve e este serviço consome."
+  value       = aws_sqs_queue.commands.url
+}
+
+output "commands_dlq_url" {
+  description = "DLQ da fila de comandos; mensagem aqui significa comando que falhou o bastante para sair da fila."
+  value       = aws_sqs_queue.commands_dlq.url
+}

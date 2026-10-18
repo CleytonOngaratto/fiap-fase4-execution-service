@@ -8,3 +8,7 @@ metadata:
 data:
   QUARKUS_HTTP_HOST: "0.0.0.0"
   QUARKUS_LOG_LEVEL: INFO
+
+  # Trocados no deploy pelo cd.yml; aplicados crus, a app sobe sem fila e sem tópico.
+  EXECUTION_COMMANDS_QUEUE_URL: __EXECUTION_COMMANDS_QUEUE_URL__
+  EXECUTION_EVENTS_TOPIC_ARN: __EXECUTION_EVENTS_TOPIC_ARN__
