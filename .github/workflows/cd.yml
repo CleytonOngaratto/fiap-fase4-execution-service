@@ -91,18 +91,23 @@ jobs:
           cluster=$(read_param /fase4/eks/cluster-name)
           alb_sg=$(read_param /fase4/alb/sg-id)
           topic=$(read_param /fase4/sns/execution-events/topic-arn)
+          # O catalogo do OS e alcancado pelo ALB interno, nunca por DNS de cluster hardcodado: o endereco e
+          # contrato da plataforma, publicado no SSM.
+          alb_dns=$(read_param /fase4/alb/dns)
 
           {
             echo "ECR_REPO=$ecr"
             echo "CLUSTER_NAME=$cluster"
             echo "ALB_SG_ID=$alb_sg"
             echo "EVENTS_TOPIC_ARN=$topic"
+            echo "OS_INTERNAL_BASE_URL=http://$alb_dns"
             echo "IMAGE=${ecr}:${GITHUB_SHA}"
           } >> "$GITHUB_ENV"
 
           echo "ECR     : $ecr"
           echo "cluster : $cluster"
           echo "topico  : $topic"
+          echo "ALB     : $alb_dns"
 
       # Num merge com código e terraform/ os dois workflows rodam juntos: o deploy espera o target group existir.
       - name: Wait for the service contract (SSM)
@@ -176,7 +181,7 @@ jobs:
           kubectl apply -f "$MANIFESTS/serviceaccount.yaml"
 
           for placeholder in __EXECUTION_COMMANDS_QUEUE_URL__ __EXECUTION_EVENTS_TOPIC_ARN__ \
-                             __EXECUTION_TABLE_NAME__; do
+                             __EXECUTION_TABLE_NAME__ __OS_INTERNAL_BASE_URL__; do
             if ! grep -q "$placeholder" "$MANIFESTS/configmap.yaml"; then
               echo "::error::configmap.yaml sem o placeholder $placeholder - alguem hardcodou o valor?"
               exit 1
@@ -185,6 +190,7 @@ jobs:
           sed -e "s|__EXECUTION_COMMANDS_QUEUE_URL__|${COMMANDS_QUEUE_URL}|" \
               -e "s|__EXECUTION_EVENTS_TOPIC_ARN__|${EVENTS_TOPIC_ARN}|" \
               -e "s|__EXECUTION_TABLE_NAME__|${EXECUTION_TABLE_NAME}|" \
+              -e "s|__OS_INTERNAL_BASE_URL__|${OS_INTERNAL_BASE_URL}|" \
             "$MANIFESTS/configmap.yaml" | kubectl apply -f -
 
       - name: Render Secrets from SSM
@@ -216,6 +222,52 @@ jobs:
             echo "$data"
           } | kubectl apply -f - > /dev/null
           echo "secret/$APP_NAME-app aplicado"
+
+          # Este servico valida o JWT e nunca o assina: a chave privada nao entra neste cluster.
+          if ! jwt_public=$(aws ssm get-parameter --name /fase4/jwt/public-key --with-decryption \
+                            --query Parameter.Value --output text 2>/dev/null); then
+            echo "::error::SSM: parametro '/fase4/jwt/public-key' ausente. Quem publica: bootstrap manual do dono; sobrevive ao destroy, nenhum Terraform o cria."
+            exit 1
+          fi
+          # O $(...) come o newline final e o PEM precisa dele: dai o printf '%s\n'.
+          b64_jwt_public=$(printf '%s\n' "$jwt_public" | base64 -w0)
+
+          {
+            echo "apiVersion: v1"
+            echo "kind: Secret"
+            echo "metadata:"
+            echo "  name: $APP_NAME-jwt"
+            echo "  namespace: $NAMESPACE"
+            echo "  labels:"
+            echo "    app: $APP_NAME"
+            echo "type: Opaque"
+            echo "data:"
+            echo "  publicKey.pem: $b64_jwt_public"
+          } | kubectl apply -f - > /dev/null
+          echo "secret/$APP_NAME-jwt aplicado"
+
+          if ! service_token=$(aws ssm get-parameter --name /fase4/os/internal/service-token \
+                               --with-decryption --query Parameter.Value --output text 2>/dev/null); then
+            echo "::error::SSM: parametro '/fase4/os/internal/service-token' ausente. Quem publica: o terraform.yml do fiap-fase4-os-service."
+            exit 1
+          fi
+          b64_service_token=$(printf '%s' "$service_token" | base64 -w0)
+          echo "::add-mask::$service_token"
+          echo "::add-mask::$b64_service_token"
+
+          {
+            echo "apiVersion: v1"
+            echo "kind: Secret"
+            echo "metadata:"
+            echo "  name: $APP_NAME-catalog"
+            echo "  namespace: $NAMESPACE"
+            echo "  labels:"
+            echo "    app: $APP_NAME"
+            echo "type: Opaque"
+            echo "data:"
+            echo "  OS_INTERNAL_SERVICE_TOKEN: $b64_service_token"
+          } | kubectl apply -f - > /dev/null
+          echo "secret/$APP_NAME-catalog aplicado"
 
       # Antes do Deployment: o controller só injeta o readiness gate em pod criado depois do binding.
       - name: Apply Service and TargetGroupBinding

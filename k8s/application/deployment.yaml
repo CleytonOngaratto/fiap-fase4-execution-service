@@ -27,6 +27,8 @@ spec:
         runAsNonRoot: true
         runAsUser: 1001
         runAsGroup: 1001
+        # Sem isto o Secret montado fica root:root com modo 0440 e o processo (uid 1001) nao le a chave.
+        fsGroup: 1001
       containers:
         - name: execution-service
           image: __IMAGE__
@@ -48,6 +50,12 @@ spec:
                 name: execution-service-config
             - secretRef:
                 name: execution-service-app
+            - secretRef:
+                name: execution-service-catalog
+          volumeMounts:
+            - name: jwt-keys
+              mountPath: /deployments/secrets
+              readOnly: true
           startupProbe:
             httpGet:
               path: /execution/v1/q/health/live
@@ -79,3 +87,8 @@ spec:
               cpu: 500m
               # Igual ao request; é o teto do heap da JVM (MaxRAMPercentage 25%).
               memory: 896Mi
+      volumes:
+        - name: jwt-keys
+          secret:
+            secretName: execution-service-jwt
+            defaultMode: 0440
