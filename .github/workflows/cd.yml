@@ -111,6 +111,7 @@ jobs:
           params=(
             "/fase4/$SERVICE/alb/target-group-arn"
             "/fase4/$SERVICE/sqs/commands-queue-url"
+            "/fase4/$SERVICE/dynamodb/table-name"
           )
           deadline=$((SECONDS + 1500))
 
@@ -134,14 +135,17 @@ jobs:
 
           tg=$(aws ssm get-parameter --name "/fase4/$SERVICE/alb/target-group-arn" --query Parameter.Value --output text)
           queue=$(aws ssm get-parameter --name "/fase4/$SERVICE/sqs/commands-queue-url" --query Parameter.Value --output text)
+          table=$(aws ssm get-parameter --name "/fase4/$SERVICE/dynamodb/table-name" --query Parameter.Value --output text)
 
           {
             echo "TARGET_GROUP_ARN=$tg"
             echo "COMMANDS_QUEUE_URL=$queue"
+            echo "EXECUTION_TABLE_NAME=$table"
           } >> "$GITHUB_ENV"
 
           echo "target group : $tg"
           echo "fila         : $queue"
+          echo "tabela       : $table"
 
       - name: Log in to Amazon ECR
         uses: aws-actions/amazon-ecr-login@03f1aad4c6c7ffd436567f42f9384779290529bd # v2.1.7
@@ -171,7 +175,8 @@ jobs:
           kubectl apply -f "$MANIFESTS/namespace.yaml"
           kubectl apply -f "$MANIFESTS/serviceaccount.yaml"
 
-          for placeholder in __EXECUTION_COMMANDS_QUEUE_URL__ __EXECUTION_EVENTS_TOPIC_ARN__; do
+          for placeholder in __EXECUTION_COMMANDS_QUEUE_URL__ __EXECUTION_EVENTS_TOPIC_ARN__ \
+                             __EXECUTION_TABLE_NAME__; do
             if ! grep -q "$placeholder" "$MANIFESTS/configmap.yaml"; then
               echo "::error::configmap.yaml sem o placeholder $placeholder - alguem hardcodou o valor?"
               exit 1
@@ -179,6 +184,7 @@ jobs:
           done
           sed -e "s|__EXECUTION_COMMANDS_QUEUE_URL__|${COMMANDS_QUEUE_URL}|" \
               -e "s|__EXECUTION_EVENTS_TOPIC_ARN__|${EVENTS_TOPIC_ARN}|" \
+              -e "s|__EXECUTION_TABLE_NAME__|${EXECUTION_TABLE_NAME}|" \
             "$MANIFESTS/configmap.yaml" | kubectl apply -f -
 
       - name: Render Secrets from SSM

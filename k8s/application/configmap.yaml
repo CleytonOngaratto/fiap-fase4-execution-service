@@ -12,3 +12,4 @@ data:
   # Trocados no deploy pelo cd.yml; aplicados crus, a app sobe sem fila e sem tópico.
   EXECUTION_COMMANDS_QUEUE_URL: __EXECUTION_COMMANDS_QUEUE_URL__
   EXECUTION_EVENTS_TOPIC_ARN: __EXECUTION_EVENTS_TOPIC_ARN__
+  EXECUTION_TABLE_NAME: __EXECUTION_TABLE_NAME__

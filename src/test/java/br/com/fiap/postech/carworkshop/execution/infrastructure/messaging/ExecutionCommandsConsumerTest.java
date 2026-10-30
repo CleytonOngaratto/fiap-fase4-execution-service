@@ -1,150 +1,133 @@
 package br.com.fiap.postech.carworkshop.execution.infrastructure.messaging;
 
-import br.com.fiap.postech.carworkshop.execution.domain.message.DiagnosisStartedEvent;
-import br.com.fiap.postech.carworkshop.execution.usecase.port.out.DiagnosisEventPublisherPort;
-import io.quarkus.test.InjectMock;
-import io.quarkus.test.common.QuarkusTestResource;
-import io.quarkus.test.junit.QuarkusTest;
-import jakarta.inject.Inject;
-import org.eclipse.microprofile.config.inject.ConfigProperty;
+import br.com.fiap.postech.carworkshop.execution.adapter.gateway.SagaEnvelopeCodec;
+import br.com.fiap.postech.carworkshop.execution.adapter.gateway.TestCodec;
+import br.com.fiap.postech.carworkshop.execution.domain.message.SagaMessageType;
+import br.com.fiap.postech.carworkshop.execution.usecase.port.out.ExecutionWriteResult;
+import com.fasterxml.jackson.databind.JsonNode;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
 import software.amazon.awssdk.services.sqs.SqsClient;
-import software.amazon.awssdk.services.sqs.model.GetQueueAttributesRequest;
-import software.amazon.awssdk.services.sqs.model.PurgeQueueRequest;
-import software.amazon.awssdk.services.sqs.model.QueueAttributeName;
-import software.amazon.awssdk.services.sqs.model.SendMessageRequest;
+import software.amazon.awssdk.services.sqs.model.DeleteMessageRequest;
+import software.amazon.awssdk.services.sqs.model.Message;
+import software.amazon.awssdk.services.sqs.model.ReceiveMessageRequest;
+import software.amazon.awssdk.services.sqs.model.ReceiveMessageResponse;
 
-import java.util.Map;
-import java.util.UUID;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.doThrow;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
-@QuarkusTest
-@QuarkusTestResource(value = ElasticMqResource.class, restrictToAnnotatedClass = true)
 class ExecutionCommandsConsumerTest {
 
-    private static final UUID SAGA_ID = UUID.fromString("6f1d0000-0000-4000-8000-000000000002");
+    private static final String QUEUE_URL = "http://localhost:9324/000000000000/execution-commands.fifo";
+    private static final String RECEIPT = "receipt-1";
 
-    @Inject
-    ExecutionCommandsConsumer consumer;
-
-    @Inject
-    SqsClient sqs;
-
-    @InjectMock
-    DiagnosisEventPublisherPort publisher;
-
-    @ConfigProperty(name = "execution.commands.queue-url")
-    String commandsQueueUrl;
+    private SqsClient sqs;
+    private ExecutionCommandHandler handler;
+    private ExecutionCommandsConsumer consumer;
 
     @BeforeEach
-    void emptyTheQueue() {
-        sqs.purgeQueue(PurgeQueueRequest.builder().queueUrl(commandsQueueUrl).build());
+    void setUp() {
+        sqs = mock(SqsClient.class);
+        handler = mock(ExecutionCommandHandler.class);
+        SagaEnvelopeCodec codec = TestCodec.codec();
+        consumer = new ExecutionCommandsConsumer();
+        consumer.sqs = sqs;
+        consumer.codec = codec;
+        consumer.handler = handler;
+        consumer.commandsQueueUrl = QUEUE_URL;
+        consumer.batchSize = 10;
     }
 
-    private void send(String body, String groupId) {
-        sqs.sendMessage(SendMessageRequest.builder()
-                .queueUrl(commandsQueueUrl)
-                .messageBody(body)
-                .messageGroupId(groupId)
-                .messageDeduplicationId(UUID.randomUUID().toString())
+    @Test
+    void handsEveryReceivedMessageToTheHandler() {
+        when(sqs.receiveMessage(any(ReceiveMessageRequest.class))).thenReturn(ReceiveMessageResponse.builder()
+                .messages(message(body(SagaMessageType.START_DIAGNOSIS)),
+                        message(body(SagaMessageType.CANCEL_DIAGNOSIS)))
                 .build());
-    }
+        when(handler.apply(any(JsonNode.class), anyString())).thenReturn(ExecutionWriteResult.APPLIED);
 
-    private static String startDiagnosis(UUID messageId, long workOrderId) {
-        return """
-                {
-                  "messageId": "%s",
-                  "type": "StartDiagnosis",
-                  "version": 1,
-                  "occurredAt": "2026-10-16T12:00:00Z",
-                  "sagaId": "%s",
-                  "workOrderId": %d,
-                  "correlationId": "EVIDENCIA-B3-001",
-                  "payload": { "vehiclePlate": "ABC1D23" }
-                }
-                """.formatted(messageId, SAGA_ID, workOrderId);
-    }
+        consumer.poll();
 
-    private int messagesLeft() {
-        Map<QueueAttributeName, String> attributes = sqs.getQueueAttributes(GetQueueAttributesRequest.builder()
-                .queueUrl(commandsQueueUrl)
-                .attributeNames(QueueAttributeName.APPROXIMATE_NUMBER_OF_MESSAGES,
-                        QueueAttributeName.APPROXIMATE_NUMBER_OF_MESSAGES_NOT_VISIBLE)
-                .build()).attributes();
-        return Integer.parseInt(attributes.get(QueueAttributeName.APPROXIMATE_NUMBER_OF_MESSAGES))
-                + Integer.parseInt(attributes.get(QueueAttributeName.APPROXIMATE_NUMBER_OF_MESSAGES_NOT_VISIBLE));
-    }
-
-    private DiagnosisStartedEvent capturePublished() {
-        ArgumentCaptor<DiagnosisStartedEvent> captor = ArgumentCaptor.forClass(DiagnosisStartedEvent.class);
-        verify(publisher).publish(captor.capture());
-        return captor.getValue();
+        verify(handler).apply(any(JsonNode.class), eq(SagaMessageType.START_DIAGNOSIS));
+        verify(handler).apply(any(JsonNode.class), eq(SagaMessageType.CANCEL_DIAGNOSIS));
+        verify(sqs, times(2)).deleteMessage(any(DeleteMessageRequest.class));
     }
 
     @Test
-    void startDiagnosis_publishesTheEventAndDeletesTheCommand() {
-        UUID messageId = UUID.randomUUID();
-        send(startDiagnosis(messageId, 42L), "42");
+    void deletesTheMessageOfAnAppliedCommand() {
+        when(handler.apply(any(JsonNode.class), anyString())).thenReturn(ExecutionWriteResult.APPLIED);
 
-        consumer.poll();
+        consumer.consume(message(body(SagaMessageType.START_REPAIR)));
 
-        DiagnosisStartedEvent event = capturePublished();
-        assertEquals(42L, event.workOrderId());
-        assertEquals(SAGA_ID, event.sagaId());
-        assertEquals("EVIDENCIA-B3-001", event.correlationId());
-        assertEquals(messageId, event.causationId());
-        assertEquals(0, messagesLeft());
+        verify(sqs).deleteMessage(DeleteMessageRequest.builder()
+                .queueUrl(QUEUE_URL).receiptHandle(RECEIPT).build());
+    }
+
+    // Duplicata e conflito sao resultado de negocio: a mensagem sai da fila. Deixa-la travaria todas as
+    // seguintes da mesma ordem de servico, porque a fila e FIFO por OS.
+    @Test
+    void deletesTheMessageOfADuplicateAndOfAConflict() {
+        when(handler.apply(any(JsonNode.class), anyString())).thenReturn(ExecutionWriteResult.DUPLICATE);
+        consumer.consume(message(body(SagaMessageType.CANCEL_DIAGNOSIS)));
+
+        when(handler.apply(any(JsonNode.class), anyString())).thenReturn(ExecutionWriteResult.CONFLICT);
+        consumer.consume(message(body(SagaMessageType.START_REPAIR)));
+
+        verify(sqs, times(2)).deleteMessage(any(DeleteMessageRequest.class));
     }
 
     @Test
-    void redeliveryOfTheSameCommandKeepsTheSameMessageId() {
-        UUID messageId = UUID.randomUUID();
-        send(startDiagnosis(messageId, 43L), "43");
-        consumer.poll();
-        send(startDiagnosis(messageId, 43L), "43");
-        consumer.poll();
+    void dropsAnUnknownCommandTypeWithoutCallingTheHandler() {
+        consumer.consume(message(body("PaintTheCar")));
 
-        ArgumentCaptor<DiagnosisStartedEvent> captor = ArgumentCaptor.forClass(DiagnosisStartedEvent.class);
-        verify(publisher, times(2)).publish(captor.capture());
-        assertEquals(captor.getAllValues().get(0).messageId(), captor.getAllValues().get(1).messageId());
+        verifyNoInteractions(handler);
+        verify(sqs).deleteMessage(any(DeleteMessageRequest.class));
     }
 
     @Test
-    void unknownType_isLoggedAndDeleted() {
-        send(startDiagnosis(UUID.randomUUID(), 44L).replace("StartDiagnosis", "SomethingElse"), "44");
+    void leavesAMessageThatIsNotJsonForTheRedrivePolicy() {
+        consumer.consume(message("nao e json"));
 
-        consumer.poll();
-
-        verify(publisher, never()).publish(any());
-        assertEquals(0, messagesLeft());
+        verifyNoInteractions(handler);
+        verify(sqs, never()).deleteMessage(any(DeleteMessageRequest.class));
     }
 
     @Test
-    void bodyThatIsNotJson_staysForTheRedrivePolicy() {
-        send("not json", "45");
+    void leavesAMessageWhoseCommandFailedForTheRedrivePolicy() {
+        when(handler.apply(any(JsonNode.class), anyString()))
+                .thenThrow(new IllegalStateException("dynamo down"));
 
-        consumer.poll();
+        consumer.consume(message(body(SagaMessageType.START_DIAGNOSIS)));
 
-        verify(publisher, never()).publish(any());
-        assertEquals(1, messagesLeft());
+        verify(sqs, never()).deleteMessage(any(DeleteMessageRequest.class));
     }
 
+    // O sagaId so alimenta o log: um valor malformado ou ausente nao pode derrubar o processamento.
     @Test
-    void publishFailure_leavesTheCommandForTheRedrivePolicy() {
-        doThrow(new IllegalStateException("SNS is down")).when(publisher).publish(any());
-        send(startDiagnosis(UUID.randomUUID(), 46L), "46");
+    void processesACommandWhoseSagaIdentifierIsMalformedOrAbsent() {
+        when(handler.apply(any(JsonNode.class), anyString())).thenReturn(ExecutionWriteResult.APPLIED);
 
-        consumer.poll();
+        consumer.consume(message("{\"type\":\"CancelDiagnosis\",\"sagaId\":\"nao-e-uuid\","
+                + "\"workOrderId\":42,\"payload\":{}}"));
+        consumer.consume(message("{\"type\":\"CancelDiagnosis\",\"workOrderId\":42,\"payload\":{}}"));
 
-        verify(publisher).publish(any());
-        assertEquals(1, messagesLeft());
+        verify(sqs, times(2)).deleteMessage(any(DeleteMessageRequest.class));
+    }
+
+    private static Message message(String body) {
+        return Message.builder().body(body).receiptHandle(RECEIPT).build();
+    }
+
+    private static String body(String type) {
+        return "{\"messageId\":\"0b8f1c2e-0000-4000-8000-000000000002\",\"type\":\"" + type + "\","
+                + "\"sagaId\":\"6f1d0f3a-0000-4000-8000-000000000001\",\"workOrderId\":42,"
+                + "\"correlationId\":\"EVIDENCIA-B6-001\",\"payload\":{}}";
     }
 }
