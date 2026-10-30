@@ -29,6 +29,19 @@ class ArchitectureTest {
                 .check(productionClasses);
     }
 
+    // Trava a invariante do outbox: o evento so sai pelo relay, que le o item gravado na transacao. Sem esta
+    // regra, um caso de uso poderia voltar a publicar direto e "gravar o estado" deixaria de ser atomico com
+    // "publicar o evento" sem que nenhum teste de comportamento reclamasse.
+    @Test
+    void only_the_outbox_relay_publishes_events() {
+        noClasses()
+                .that().resideOutsideOfPackages("..infrastructure.messaging..", "..infrastructure.config..",
+                        "..adapter.gateway..")
+                .should().dependOnClassesThat().haveSimpleNameEndingWith("ExecutionEventPublisher")
+                .as("only the outbox relay may reach the event publisher")
+                .check(productionClasses);
+    }
+
     @Test
     void usecase_does_not_depend_on_infrastructure() {
         noClasses()
