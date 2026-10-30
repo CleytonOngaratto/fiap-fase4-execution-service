@@ -130,12 +130,14 @@ public class ExecutionMessagingResource implements QuarkusTestResourceLifecycleM
                 .build();
     }
 
+    // Credencial alfanumerica: com hifen ou sublinhado o DynamoDB Local responde "The Access Key ID or
+    // security token is invalid", que parece credencial errada e e so o alfabeto que ele aceita.
     static DynamoDbClient dynamoClient(String endpoint) {
         return DynamoDbClient.builder()
                 .endpointOverride(URI.create(endpoint))
                 .region(Region.US_EAST_1)
                 .credentialsProvider(StaticCredentialsProvider.create(
-                        AwsBasicCredentials.create("dynamodb-local", "dynamodb-local")))
+                        AwsBasicCredentials.create("dynamodblocal", "dynamodblocal")))
                 .build();
     }
 }

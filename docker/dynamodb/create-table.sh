@@ -2,7 +2,7 @@
 set -eu
 
 : "${TABLE_NAME:=execution}"
-: "${ENDPOINT:=http://execution_db:8000}"
+: "${ENDPOINT:=http://executiondb:8000}"
 
 if aws dynamodb describe-table --table-name "$TABLE_NAME" --endpoint-url "$ENDPOINT" >/dev/null 2>&1; then
   echo "tabela $TABLE_NAME ja existe"

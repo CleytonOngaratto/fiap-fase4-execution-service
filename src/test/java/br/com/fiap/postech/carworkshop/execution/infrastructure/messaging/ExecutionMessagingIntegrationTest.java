@@ -125,12 +125,12 @@ class ExecutionMessagingIntegrationTest {
         send(command(SagaMessageType.CANCEL_DIAGNOSIS, UUID.randomUUID(), workOrderId,
                 "{\"reason\":\"APPROVAL_EXPIRED\"}"), workOrderId);
         consumer.poll();
-        assertEquals(1, pendingOutboxCount());
+        assertEquals(1, pendingOutboxCount(workOrderId));
 
         relay.drain();
 
         assertNotNull(sentAtOf(workOrderId));
-        assertEquals(0, pendingOutboxCount());
+        assertEquals(0, pendingOutboxCount(workOrderId));
     }
 
     // A prova da fila por filial: tres ordens entram fora de ordem e a consulta devolve pela espera, nao pelo
@@ -256,7 +256,9 @@ class ExecutionMessagingIntegrationTest {
         return value == null ? null : value.s();
     }
 
-    private long pendingOutboxCount() {
+    // A particao do indice de pendencias e global, entao a contagem se filtra pela ordem de servico: sem isso o
+    // teste leria o que as outras ordens da classe deixaram pendente.
+    private long pendingOutboxCount(long workOrderId) {
         return dynamo.query(QueryRequest.builder()
                 .tableName(ExecutionMessagingResource.TABLE)
                 .indexName(ExecutionItemMapper.OUTBOX_PENDING_INDEX)
@@ -264,7 +266,9 @@ class ExecutionMessagingIntegrationTest {
                 .expressionAttributeNames(Map.of("#partition", ExecutionItemMapper.GSI2PK))
                 .expressionAttributeValues(Map.of(":partition",
                         AttributeValue.fromS(ExecutionItemMapper.PENDING_PARTITION)))
-                .build()).items().size();
+                .build()).items().stream()
+                .filter(item -> String.valueOf(workOrderId).equals(item.get("workOrderId").n()))
+                .count();
     }
 
     private int messagesLeft() {
