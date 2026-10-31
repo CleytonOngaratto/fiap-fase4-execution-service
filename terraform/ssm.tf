@@ -9,3 +9,9 @@ resource "aws_ssm_parameter" "commands_queue_url" {
   type  = "String"
   value = aws_sqs_queue.commands.url
 }
+
+resource "aws_ssm_parameter" "dynamodb_table_name" {
+  name  = "/fase4/${local.service}/dynamodb/table-name"
+  type  = "String"
+  value = aws_dynamodb_table.execution.name
+}

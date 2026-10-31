@@ -3,6 +3,8 @@ locals {
   path_prefix   = "/execution/v1"
   rule_priority = 300
 
+  table_name = "${var.project}-execution"
+
   commands_queue_name = "execution-commands.fifo"
   commands_dlq_name   = "execution-commands-dlq.fifo"
 

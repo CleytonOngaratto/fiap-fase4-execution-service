@@ -1,0 +1,101 @@
+services:
+  execution_app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: execution-service:local
+    container_name: execution_app
+    ports:
+      - "8082:8080"
+    environment:
+      JWT_PUBLIC_KEY_LOCATION: file:/deployments/secrets/publicKey.pem
+      # Sem valor: repassa do ambiente e omite se ausente; ${VAR:-} mandaria vazio, que o agente trata diferente.
+      NEW_RELIC_LICENSE_KEY:
+      NEW_RELIC_APP_NAME: ${NEW_RELIC_APP_NAME:-execution-service-local}
+      # A imagem roda com o perfil de producao: endpoint, credencial, fila e tabela vem por env, nao pelo %dev.
+      # Os hosts aqui sao os ALIAS sem sublinhado, nunca os nomes dos servicos: o resolvedor de endpoint do SDK
+      # da AWS descarta uma autoridade com "_", sobra "http:" e toda chamada estoura em URISyntaxException.
+      QUARKUS_SQS_ENDPOINT_OVERRIDE: http://executionmq:9324
+      QUARKUS_SQS_AWS_CREDENTIALS_TYPE: static
+      QUARKUS_SQS_AWS_CREDENTIALS_STATIC_PROVIDER_ACCESS_KEY_ID: elasticmq
+      QUARKUS_SQS_AWS_CREDENTIALS_STATIC_PROVIDER_SECRET_ACCESS_KEY: elasticmq
+      QUARKUS_SNS_AWS_CREDENTIALS_TYPE: static
+      QUARKUS_SNS_AWS_CREDENTIALS_STATIC_PROVIDER_ACCESS_KEY_ID: sns-fake
+      QUARKUS_SNS_AWS_CREDENTIALS_STATIC_PROVIDER_SECRET_ACCESS_KEY: sns-fake
+      QUARKUS_DYNAMODB_ENDPOINT_OVERRIDE: http://executiondb:8000
+      QUARKUS_DYNAMODB_AWS_CREDENTIALS_TYPE: static
+      QUARKUS_DYNAMODB_AWS_CREDENTIALS_STATIC_PROVIDER_ACCESS_KEY_ID: dynamodblocal
+      QUARKUS_DYNAMODB_AWS_CREDENTIALS_STATIC_PROVIDER_SECRET_ACCESS_KEY: dynamodblocal
+      EXECUTION_COMMANDS_QUEUE_URL: http://executionmq:9324/000000000000/execution-commands.fifo
+      EXECUTION_TABLE_NAME: ${TABLE_NAME:-execution}
+      # O ElasticMQ nao emula SNS: em local o relay registra o envelope em log em vez de publicar.
+      EXECUTION_EVENTS_PUBLISH_TO_LOG: "true"
+      # Exigido mesmo sem publicar no SNS: o ARN entra como String no modulo de configuracao, e valor vazio
+      # conta como ausente - a app nao sobe.
+      EXECUTION_EVENTS_TOPIC_ARN: arn:aws:sns:us-east-1:000000000000:execution-events.fifo
+      OS_INTERNAL_HOST: executionos:8080
+      OS_INTERNAL_SERVICE_TOKEN: ${OS_INTERNAL_SERVICE_TOKEN:-dev-service-token}
+    volumes:
+      - ./secrets:/deployments/secrets:ro
+    depends_on:
+      execution_db_init:
+        condition: service_completed_successfully
+      execution_mq:
+        condition: service_started
+      execution_os:
+        condition: service_started
+
+  execution_mq:
+    image: softwaremill/elasticmq-native:1.7.1
+    container_name: execution_mq
+    ports:
+      - "${MQ_PORT_HOST:-9326}:9324"
+    volumes:
+      - ./docker/elasticmq/elasticmq.conf:/opt/elasticmq.conf:ro
+    networks:
+      default:
+        aliases:
+          - executionmq
+
+  execution_db:
+    image: amazon/dynamodb-local:2.5.2
+    container_name: execution_db
+    command: ["-jar", "DynamoDBLocal.jar", "-inMemory", "-sharedDb"]
+    ports:
+      - "${DB_PORT_HOST:-8000}:8000"
+    # Alias sem sublinhado: tanto a CLI quanto o SDK da AWS recusam "_" no host de uma URL de endpoint — a CLI
+    # com "Invalid endpoint" e o SDK descartando a autoridade até sobrar "http:".
+    networks:
+      default:
+        aliases:
+          - executiondb
+
+  execution_db_init:
+    image: amazon/aws-cli:2.27.49
+    container_name: execution_db_init
+    entrypoint: ["/bin/sh", "/opt/create-table.sh"]
+    environment:
+      AWS_ACCESS_KEY_ID: dynamodblocal
+      AWS_SECRET_ACCESS_KEY: dynamodblocal
+      AWS_DEFAULT_REGION: us-east-1
+      TABLE_NAME: ${TABLE_NAME:-execution}
+      ENDPOINT: http://executiondb:8000
+    volumes:
+      - ./docker/dynamodb/create-table.sh:/opt/create-table.sh:ro
+    depends_on:
+      execution_db:
+        condition: service_started
+
+  # O catalogo do OS simulado: em local o Execution valida os itens contra o WireMock, nao contra o OS de
+  # verdade, para o compose subir sem o outro servico e sem banco nenhum dele.
+  execution_os:
+    image: wiremock/wiremock:3.13.2
+    container_name: execution_os
+    ports:
+      - "${OS_PORT_HOST:-8089}:8080"
+    volumes:
+      - ./docker/wiremock/mappings:/home/wiremock/mappings:ro
+    networks:
+      default:
+        aliases:
+          - executionos
