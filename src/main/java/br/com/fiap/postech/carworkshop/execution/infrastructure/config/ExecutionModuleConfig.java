@@ -78,8 +78,17 @@ public class ExecutionModuleConfig {
     @ApplicationScoped
     public CatalogValidationPort catalogValidationPort(Clock clock) {
         return new OsCatalogGateway(catalogBaseUrl, catalogServiceToken, catalogTimeout, catalogMaxAttempts,
-                HttpClient.newBuilder().connectTimeout(catalogTimeout).build(), objectMapper,
+                catalogHttpClient(), objectMapper,
                 new CircuitBreaker(catalogFailureThreshold, catalogCircuitOpenDuration), clock);
+    }
+
+    // HTTP_1_1 explicito: o default do HttpClient e HTTP_2, e o upgrade h2c em texto claro contra o ALB interno
+    // fica sem resposta nenhuma ate o timeout, entao toda validacao de item responderia 503 ao mecanico.
+    HttpClient catalogHttpClient() {
+        return HttpClient.newBuilder()
+                .version(HttpClient.Version.HTTP_1_1)
+                .connectTimeout(catalogTimeout)
+                .build();
     }
 
     @Produces

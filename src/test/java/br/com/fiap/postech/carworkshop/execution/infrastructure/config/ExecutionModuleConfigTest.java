@@ -10,9 +10,11 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import software.amazon.awssdk.services.sns.SnsClient;
 
+import java.net.http.HttpClient;
 import java.time.Clock;
 import java.time.Duration;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.Mockito.mock;
@@ -41,6 +43,14 @@ class ExecutionModuleConfigTest {
 
         assertInstanceOf(OsCatalogGateway.class, catalog);
         assertNotNull(config.mechanicUseCase(new RecordingRepository(), catalog, Clock.systemUTC()));
+    }
+
+    @Test
+    void theCatalogClientSpeaksHttp1OnlyAndCarriesTheConnectTimeout() {
+        HttpClient client = config.catalogHttpClient();
+
+        assertEquals(HttpClient.Version.HTTP_1_1, client.version());
+        assertEquals(Duration.ofSeconds(2), client.connectTimeout().orElseThrow());
     }
 
     @Test
