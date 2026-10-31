@@ -176,7 +176,7 @@ public final class ExecutionItemMapper {
         return new PendingEvent(
                 asUuid(attributes, MESSAGE_ID),
                 asText(attributes, TYPE),
-                asLong(attributes, VERSION).intValue(),
+                asInt(attributes, VERSION, SagaEnvelope.CURRENT_VERSION),
                 asInstant(attributes, OCCURRED_AT),
                 asUuid(attributes, SAGA_ID),
                 asLong(attributes, WORK_ORDER_ID),
@@ -219,7 +219,7 @@ public final class ExecutionItemMapper {
         for (AttributeValue entry : value.l()) {
             Map<String, AttributeValue> fields = entry.m();
             items.add(new DiagnosedItem(asText(fields, TYPE), asLong(fields, CATALOG_ID),
-                    asLong(fields, QUANTITY).intValue()));
+                    asInt(fields, QUANTITY, 1)));
         }
         return items;
     }
@@ -232,7 +232,7 @@ public final class ExecutionItemMapper {
         for (AttributeValue entry : value.l()) {
             Map<String, AttributeValue> fields = entry.m();
             items.add(new RepairItem(asText(fields, TYPE), asLong(fields, CATALOG_ID),
-                    asText(fields, DESCRIPTION), asLong(fields, QUANTITY).intValue()));
+                    asText(fields, DESCRIPTION), asInt(fields, QUANTITY, 1)));
         }
         return items;
     }
@@ -258,6 +258,13 @@ public final class ExecutionItemMapper {
     private static String asText(Map<String, AttributeValue> attributes, String name) {
         AttributeValue value = attributes.get(name);
         return value == null ? null : value.s();
+    }
+
+    // Tolerant reader como o codec: atributo numerico ausente volta no valor padrao em vez de estourar
+    // NullPointerException ao desembrulhar.
+    private static int asInt(Map<String, AttributeValue> attributes, String name, int fallback) {
+        Long value = asLong(attributes, name);
+        return value == null ? fallback : value.intValue();
     }
 
     private static Long asLong(Map<String, AttributeValue> attributes, String name) {

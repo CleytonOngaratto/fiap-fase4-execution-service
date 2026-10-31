@@ -12,6 +12,8 @@ import org.junit.jupiter.api.Test;
 import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
 
 import java.time.Instant;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -69,6 +71,13 @@ class ExecutionItemMapperTest {
         assertEquals(original, restored);
         assertNull(restored.mechanic());
         assertTrue(restored.diagnosedItems().isEmpty());
+    }
+
+    private static ExecutionItem itemWithItems() {
+        return ExecutionFixtures.queued()
+                .startDiagnosis(ExecutionFixtures.MECHANIC, ExecutionFixtures.NOW).orElseThrow()
+                .completeDiagnosis("Amortecedor gasto", ExecutionFixtures.diagnosedItems(),
+                        ExecutionFixtures.NOW).orElseThrow();
     }
 
     @Test
@@ -129,6 +138,25 @@ class ExecutionItemMapperTest {
         assertEquals("INBOX#" + ExecutionFixtures.MESSAGE_ID, item.get(ExecutionItemMapper.SK).s());
         assertEquals(String.valueOf(ExecutionFixtures.NOW.plusSeconds(60).getEpochSecond()),
                 item.get("expiresAt").n());
+    }
+
+    // Atributo numerico ausente volta no padrao em vez de estourar NullPointerException ao desembrulhar: um
+    // item gravado por outra versao do esquema nao pode derrubar o relay nem a leitura da fila.
+    @Test
+    void readsAnAbsentNumberAsItsDefaultInsteadOfThrowing() {
+        Map<String, AttributeValue> outbox = new HashMap<>(ExecutionItemMapper.toOutboxItem(
+                ExecutionEvent.replyTo(ExecutionFixtures.command(SagaMessageType.CANCEL_DIAGNOSIS),
+                        SagaMessageType.DIAGNOSIS_CANCELED, new EmptyPayload(), ExecutionFixtures.NOW), "{}"));
+        outbox.remove(ExecutionItemMapper.VERSION);
+
+        assertEquals(1, ExecutionItemMapper.toPendingEvent(outbox).version());
+
+        Map<String, AttributeValue> state = new HashMap<>(
+                ExecutionItemMapper.toStateItem(itemWithItems()));
+        state.put("diagnosedItems", AttributeValue.fromL(List.of(AttributeValue.fromM(Map.of(
+                "type", AttributeValue.fromS("PART"), "catalogId", AttributeValue.fromN("12"))))));
+
+        assertEquals(1, ExecutionItemMapper.toDomain(state).diagnosedItems().get(0).quantity());
     }
 
     @Test

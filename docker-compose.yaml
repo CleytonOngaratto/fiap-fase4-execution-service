@@ -33,7 +33,7 @@ services:
       # Exigido mesmo sem publicar no SNS: o ARN entra como String no modulo de configuracao, e valor vazio
       # conta como ausente - a app nao sobe.
       EXECUTION_EVENTS_TOPIC_ARN: arn:aws:sns:us-east-1:000000000000:execution-events.fifo
-      OS_INTERNAL_BASE_URL: http://executionos:8080
+      OS_INTERNAL_HOST: executionos:8080
       OS_INTERNAL_SERVICE_TOKEN: ${OS_INTERNAL_SERVICE_TOKEN:-dev-service-token}
     volumes:
       - ./secrets:/deployments/secrets:ro

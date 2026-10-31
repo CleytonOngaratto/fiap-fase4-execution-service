@@ -92,7 +92,8 @@ jobs:
           alb_sg=$(read_param /fase4/alb/sg-id)
           topic=$(read_param /fase4/sns/execution-events/topic-arn)
           # O catalogo do OS e alcancado pelo ALB interno, nunca por DNS de cluster hardcodado: o endereco e
-          # contrato da plataforma, publicado no SSM.
+          # contrato da plataforma, publicado no SSM. Daqui sai o HOST; o esquema e decisao da aplicacao, para
+          # que trocar por HTTPS numa conta real seja configuracao e nao mudanca de pipeline.
           alb_dns=$(read_param /fase4/alb/dns)
 
           {
@@ -100,7 +101,7 @@ jobs:
             echo "CLUSTER_NAME=$cluster"
             echo "ALB_SG_ID=$alb_sg"
             echo "EVENTS_TOPIC_ARN=$topic"
-            echo "OS_INTERNAL_BASE_URL=http://$alb_dns"
+            echo "OS_INTERNAL_HOST=$alb_dns"
             echo "IMAGE=${ecr}:${GITHUB_SHA}"
           } >> "$GITHUB_ENV"
 
@@ -181,7 +182,7 @@ jobs:
           kubectl apply -f "$MANIFESTS/serviceaccount.yaml"
 
           for placeholder in __EXECUTION_COMMANDS_QUEUE_URL__ __EXECUTION_EVENTS_TOPIC_ARN__ \
-                             __EXECUTION_TABLE_NAME__ __OS_INTERNAL_BASE_URL__; do
+                             __EXECUTION_TABLE_NAME__ __OS_INTERNAL_HOST__; do
             if ! grep -q "$placeholder" "$MANIFESTS/configmap.yaml"; then
               echo "::error::configmap.yaml sem o placeholder $placeholder - alguem hardcodou o valor?"
               exit 1
@@ -190,7 +191,7 @@ jobs:
           sed -e "s|__EXECUTION_COMMANDS_QUEUE_URL__|${COMMANDS_QUEUE_URL}|" \
               -e "s|__EXECUTION_EVENTS_TOPIC_ARN__|${EVENTS_TOPIC_ARN}|" \
               -e "s|__EXECUTION_TABLE_NAME__|${EXECUTION_TABLE_NAME}|" \
-              -e "s|__OS_INTERNAL_BASE_URL__|${OS_INTERNAL_BASE_URL}|" \
+              -e "s|__OS_INTERNAL_HOST__|${OS_INTERNAL_HOST}|" \
             "$MANIFESTS/configmap.yaml" | kubectl apply -f -
 
       - name: Render Secrets from SSM
