@@ -76,8 +76,14 @@ public class ExecutionCommandsConsumer {
             return;
         }
 
-        String correlationId = envelope.path(SagaEnvelopeCodec.FIELD_CORRELATION_ID).asText(null);
-        try (LogContext ignored = LogContext.of(correlationId, sagaIdOf(envelope))) {
+        try (LogContext ignored = LogContext.of(textOf(envelope, SagaEnvelopeCodec.FIELD_CORRELATION_ID),
+                sagaIdOf(envelope), textOf(envelope, SagaEnvelopeCodec.FIELD_BRANCH_ID))) {
+            apply(message, envelope, type);
+        }
+    }
+
+    private void apply(Message message, JsonNode envelope, String type) {
+        try {
             ExecutionWriteResult result = handler.apply(envelope, type);
             if (result != ExecutionWriteResult.APPLIED) {
                 log.info("Command {} finished as {}.", type, result);
@@ -88,6 +94,10 @@ public class ExecutionCommandsConsumer {
         } catch (RuntimeException e) {
             log.error("Command failed; leaving it for the redrive policy.", e);
         }
+    }
+
+    private static String textOf(JsonNode envelope, String field) {
+        return envelope.path(field).asText(null);
     }
 
     private void delete(Message message) {

@@ -3,6 +3,8 @@ package br.com.fiap.postech.carworkshop.execution.infrastructure.messaging;
 import br.com.fiap.postech.carworkshop.execution.adapter.gateway.SagaEnvelopeCodec;
 import br.com.fiap.postech.carworkshop.execution.adapter.gateway.TestCodec;
 import br.com.fiap.postech.carworkshop.execution.domain.message.SagaMessageType;
+import br.com.fiap.postech.carworkshop.execution.infrastructure.observability.LogContext;
+import br.com.fiap.postech.carworkshop.execution.infrastructure.observability.LogLines;
 import br.com.fiap.postech.carworkshop.execution.usecase.port.out.ExecutionWriteResult;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.junit.jupiter.api.BeforeEach;
@@ -13,6 +15,10 @@ import software.amazon.awssdk.services.sqs.model.Message;
 import software.amazon.awssdk.services.sqs.model.ReceiveMessageRequest;
 import software.amazon.awssdk.services.sqs.model.ReceiveMessageResponse;
 
+import java.util.List;
+import java.util.Map;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -109,6 +115,21 @@ class ExecutionCommandsConsumerTest {
         verify(sqs, never()).deleteMessage(any(DeleteMessageRequest.class));
     }
 
+    @Test
+    void logsTheFailureWithTheContextOfTheCommand() {
+        when(handler.apply(any(JsonNode.class), anyString()))
+                .thenThrow(new IllegalStateException("dynamo down"));
+
+        try (LogLines lines = LogLines.of(ExecutionCommandsConsumer.class)) {
+            consumer.consume(message(body(SagaMessageType.START_DIAGNOSIS)));
+
+            assertEquals(List.of(Map.of(
+                    LogContext.CORRELATION_ID, "EVIDENCIA-B6-001",
+                    LogContext.SAGA_ID, "6f1d0f3a-0000-4000-8000-000000000001",
+                    LogContext.BRANCH_ID, "SP-01")), lines.errors());
+        }
+    }
+
     // O sagaId so alimenta o log: um valor malformado ou ausente nao pode derrubar o processamento.
     @Test
     void processesACommandWhoseSagaIdentifierIsMalformedOrAbsent() {
@@ -127,7 +148,7 @@ class ExecutionCommandsConsumerTest {
 
     private static String body(String type) {
         return "{\"messageId\":\"0b8f1c2e-0000-4000-8000-000000000002\",\"type\":\"" + type + "\","
-                + "\"sagaId\":\"6f1d0f3a-0000-4000-8000-000000000001\",\"workOrderId\":42,"
+                + "\"sagaId\":\"6f1d0f3a-0000-4000-8000-000000000001\",\"workOrderId\":42,\"branchId\":\"SP-01\","
                 + "\"correlationId\":\"EVIDENCIA-B6-001\",\"payload\":{}}";
     }
 }

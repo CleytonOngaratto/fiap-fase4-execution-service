@@ -4,6 +4,8 @@ import br.com.fiap.postech.carworkshop.execution.adapter.gateway.ExecutionEventP
 import br.com.fiap.postech.carworkshop.execution.adapter.gateway.OutboundMessage;
 import br.com.fiap.postech.carworkshop.execution.adapter.gateway.TestCodec;
 import br.com.fiap.postech.carworkshop.execution.domain.message.SagaMessageType;
+import br.com.fiap.postech.carworkshop.execution.infrastructure.observability.LogContext;
+import br.com.fiap.postech.carworkshop.execution.infrastructure.observability.LogLines;
 import br.com.fiap.postech.carworkshop.execution.support.ExecutionFixtures;
 import br.com.fiap.postech.carworkshop.execution.usecase.port.out.ExecutionOutboxPort;
 import br.com.fiap.postech.carworkshop.execution.usecase.port.out.PendingEvent;
@@ -14,6 +16,7 @@ import org.mockito.ArgumentCaptor;
 import java.time.Clock;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -88,6 +91,21 @@ class OutboxRelayServiceTest {
         relay.drain();
 
         verify(outbox, never()).markSent(anyLong(), any(UUID.class), any());
+    }
+
+    @Test
+    void logsThePublishFailureWithTheContextOfTheEvent() {
+        when(outbox.claimPending(10)).thenReturn(List.of(pending()));
+        doThrow(new IllegalStateException("sns down")).when(publisher).publish(any());
+
+        try (LogLines lines = LogLines.of(OutboxRelayService.class)) {
+            relay.drain();
+
+            assertEquals(List.of(Map.of(
+                    LogContext.CORRELATION_ID, ExecutionFixtures.CORRELATION_ID,
+                    LogContext.SAGA_ID, ExecutionFixtures.SAGA_ID.toString(),
+                    LogContext.BRANCH_ID, ExecutionFixtures.BRANCH)), lines.errors());
+        }
     }
 
     // Para o lote na primeira falha: a ordem por ordem de servico importa, e nao se publica o evento seguinte

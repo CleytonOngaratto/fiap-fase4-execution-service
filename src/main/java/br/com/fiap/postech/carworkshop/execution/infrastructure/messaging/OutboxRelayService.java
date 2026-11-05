@@ -50,10 +50,16 @@ public class OutboxRelayService {
         }
     }
 
+    private boolean publish(PendingEvent event) {
+        try (LogContext ignored = LogContext.of(event.correlationId(), event.sagaId(), event.branchId())) {
+            return send(event);
+        }
+    }
+
     // Publica e so depois marca: marcar primeiro perderia a mensagem se o publish falhasse. A entrega em
     // duplicidade que isso admite morre na inbox do orquestrador, que deduplica por messageId.
-    private boolean publish(PendingEvent event) {
-        try (LogContext ignored = LogContext.of(event.correlationId(), event.sagaId())) {
+    private boolean send(PendingEvent event) {
+        try {
             publisher.publish(messageFor(event));
             if (!outbox.markSent(event.workOrderId(), event.messageId(), Instant.now(clock))) {
                 log.warn("Outbox message {} had already been marked as sent.", event.messageId());
