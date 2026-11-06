@@ -12,5 +12,6 @@ public record PendingEvent(UUID messageId,
                            String branchId,
                            String correlationId,
                            UUID causationId,
-                           String payload) {
+                           String payload,
+                           String traceContext) {
 }

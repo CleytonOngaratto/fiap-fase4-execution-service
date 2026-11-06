@@ -3,8 +3,10 @@ package br.com.fiap.postech.carworkshop.execution.infrastructure.messaging;
 import br.com.fiap.postech.carworkshop.execution.adapter.gateway.SagaEnvelopeCodec;
 import br.com.fiap.postech.carworkshop.execution.domain.message.SagaMessageType;
 import br.com.fiap.postech.carworkshop.execution.infrastructure.observability.LogContext;
+import br.com.fiap.postech.carworkshop.execution.infrastructure.observability.TraceContext;
 import br.com.fiap.postech.carworkshop.execution.usecase.port.out.ExecutionWriteResult;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.newrelic.api.agent.Trace;
 import io.quarkus.scheduler.Scheduled;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -16,7 +18,9 @@ import software.amazon.awssdk.services.sqs.model.DeleteMessageRequest;
 import software.amazon.awssdk.services.sqs.model.Message;
 import software.amazon.awssdk.services.sqs.model.ReceiveMessageRequest;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -24,6 +28,9 @@ import java.util.UUID;
 public class ExecutionCommandsConsumer {
 
     private static final Logger log = LoggerFactory.getLogger(ExecutionCommandsConsumer.class);
+
+    private static final String TRANSACTION_CATEGORY = "Message";
+    private static final String QUEUE = "execution-commands";
 
     private static final Set<String> KNOWN = Set.of(
             SagaMessageType.START_DIAGNOSIS,
@@ -38,6 +45,9 @@ public class ExecutionCommandsConsumer {
 
     @Inject
     ExecutionCommandHandler handler;
+
+    @Inject
+    TraceContext trace;
 
     @ConfigProperty(name = "execution.commands.queue-url")
     String commandsQueueUrl;
@@ -59,17 +69,22 @@ public class ExecutionCommandsConsumer {
         }
     }
 
+    @Trace(dispatcher = true)
     void consume(Message message) {
+        trace.accept(traceHeadersOf(message));
         JsonNode envelope;
         try {
             envelope = codec.decode(message.body());
         } catch (RuntimeException e) {
+            trace.nameTransaction(TRANSACTION_CATEGORY, QUEUE + "/unreadable");
             // Sem apagar: a mensagem volta, esgota o maxReceiveCount e para na DLQ, onde da para investigar.
             log.error("Command could not be read; leaving it for the redrive policy.", e);
+            trace.noticeError(e);
             return;
         }
 
         String type = envelope.path(SagaEnvelopeCodec.FIELD_TYPE).asText(null);
+        describe(envelope, type);
         if (!KNOWN.contains(type)) {
             log.warn("Unknown command type {}: ignored.", type);
             delete(message);
@@ -93,7 +108,22 @@ public class ExecutionCommandsConsumer {
             delete(message);
         } catch (RuntimeException e) {
             log.error("Command failed; leaving it for the redrive policy.", e);
+            trace.noticeError(e);
         }
+    }
+
+    private void describe(JsonNode envelope, String type) {
+        trace.nameTransaction(TRANSACTION_CATEGORY, QUEUE + "/" + type);
+        trace.addAttribute("messageType", type);
+        trace.addAttribute(LogContext.SAGA_ID, textOf(envelope, SagaEnvelopeCodec.FIELD_SAGA_ID));
+        trace.addAttribute("workOrderId", textOf(envelope, SagaEnvelopeCodec.FIELD_WORK_ORDER_ID));
+        trace.addAttribute(LogContext.BRANCH_ID, textOf(envelope, SagaEnvelopeCodec.FIELD_BRANCH_ID));
+    }
+
+    private static Map<String, String> traceHeadersOf(Message message) {
+        Map<String, String> headers = new HashMap<>();
+        message.messageAttributes().forEach((name, value) -> headers.put(name, value.stringValue()));
+        return headers;
     }
 
     private static String textOf(JsonNode envelope, String field) {

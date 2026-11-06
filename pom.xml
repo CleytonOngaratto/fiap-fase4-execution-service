@@ -13,6 +13,7 @@
         <quarkus.platform.artifact-id>quarkus-bom</quarkus.platform.artifact-id>
         <quarkus.platform.group-id>io.quarkus.platform</quarkus.platform.group-id>
         <quarkus.platform.version>3.26.3</quarkus.platform.version>
+        <newrelic.version>9.4.0</newrelic.version>
         <skipITs>true</skipITs>
         <surefire-plugin.version>3.5.3</surefire-plugin.version>
 
@@ -107,6 +108,12 @@
         <dependency>
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-micrometer-registry-prometheus</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>com.newrelic.agent.java</groupId>
+            <artifactId>newrelic-api</artifactId>
+            <version>${newrelic.version}</version>
         </dependency>
 
         <dependency>

@@ -43,6 +43,7 @@ public class SnsExecutionEventGateway implements ExecutionEventPublisher {
         if (message.correlationId() != null && !message.correlationId().isBlank()) {
             attributes.put(SagaEnvelopeCodec.FIELD_CORRELATION_ID, text(message.correlationId()));
         }
+        message.traceHeaders().forEach((name, value) -> attributes.put(name, text(value)));
         return attributes;
     }
 

@@ -5,7 +5,10 @@ import br.com.fiap.postech.carworkshop.execution.support.ExecutionFixtures;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import software.amazon.awssdk.services.sns.SnsClient;
+import software.amazon.awssdk.services.sns.model.MessageAttributeValue;
 import software.amazon.awssdk.services.sns.model.PublishRequest;
+
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -53,8 +56,27 @@ class SnsExecutionEventGatewayTest {
         assertFalse(captor.getValue().messageAttributes().containsKey("correlationId"));
     }
 
+    @Test
+    void carriesTheStoredTraceContextAsMessageAttributes() {
+        SnsClient sns = mock(SnsClient.class);
+        SnsExecutionEventGateway gateway = new SnsExecutionEventGateway(sns, TOPIC);
+
+        gateway.publish(new OutboundMessage(ExecutionFixtures.MESSAGE_ID, SagaMessageType.DIAGNOSIS_CANCELED, 1,
+                ExecutionFixtures.WORK_ORDER_ID, ExecutionFixtures.SAGA_ID, ExecutionFixtures.CORRELATION_ID, "{}",
+                Map.of("traceparent", "00-trace-span-01", "tracestate", "nr=state", "newrelic", "payload")));
+
+        ArgumentCaptor<PublishRequest> captor = ArgumentCaptor.forClass(PublishRequest.class);
+        verify(sns).publish(captor.capture());
+        Map<String, MessageAttributeValue> attributes = captor.getValue().messageAttributes();
+        assertEquals(7, attributes.size());
+        assertEquals("00-trace-span-01", attributes.get("traceparent").stringValue());
+        assertEquals("String", attributes.get("traceparent").dataType());
+        assertEquals("nr=state", attributes.get("tracestate").stringValue());
+        assertEquals("payload", attributes.get("newrelic").stringValue());
+    }
+
     private static OutboundMessage message(String correlationId) {
         return new OutboundMessage(ExecutionFixtures.MESSAGE_ID, SagaMessageType.DIAGNOSIS_CANCELED, 1,
-                ExecutionFixtures.WORK_ORDER_ID, ExecutionFixtures.SAGA_ID, correlationId, "{}");
+                ExecutionFixtures.WORK_ORDER_ID, ExecutionFixtures.SAGA_ID, correlationId, "{}", Map.of());
     }
 }

@@ -6,6 +6,8 @@ import br.com.fiap.postech.carworkshop.execution.domain.entity.ExecutionStep;
 import br.com.fiap.postech.carworkshop.execution.domain.message.EmptyPayload;
 import br.com.fiap.postech.carworkshop.execution.domain.message.ExecutionEvent;
 import br.com.fiap.postech.carworkshop.execution.domain.message.SagaMessageType;
+import br.com.fiap.postech.carworkshop.execution.infrastructure.observability.TraceContext;
+import br.com.fiap.postech.carworkshop.execution.infrastructure.observability.TraceHeaders;
 import br.com.fiap.postech.carworkshop.execution.support.ExecutionFixtures;
 import br.com.fiap.postech.carworkshop.execution.usecase.port.out.ExecutionWrite;
 import br.com.fiap.postech.carworkshop.execution.usecase.port.out.ExecutionWriteResult;
@@ -26,6 +28,7 @@ import software.amazon.awssdk.services.dynamodb.model.TransactionCanceledExcepti
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -44,6 +47,7 @@ class DynamoExecutionItemGatewayTest {
     private static final String NONE = "None";
 
     private DynamoDbClient dynamo;
+    private TraceContext trace;
     private DynamoExecutionItemGateway gateway;
 
     @BeforeEach
@@ -52,6 +56,8 @@ class DynamoExecutionItemGatewayTest {
         gateway = new DynamoExecutionItemGateway();
         gateway.dynamo = dynamo;
         gateway.codec = TestCodec.codec();
+        trace = mock(TraceContext.class);
+        gateway.trace = trace;
         gateway.tableName = TABLE;
     }
 
@@ -155,6 +161,28 @@ class DynamoExecutionItemGatewayTest {
         assertEquals("PENDING", outbox.item().get(ExecutionItemMapper.GSI2PK).s());
         assertEquals("{}", outbox.item().get("payload").s());
         assertTrue(writes.get(2).put().item().get(ExecutionItemMapper.SK).s().startsWith("INBOX#"));
+    }
+
+    @Test
+    void keepsTheTraceContextOfTheCurrentTransactionWithTheEvent() {
+        when(trace.capture()).thenReturn(Map.of("traceparent", "00-trace-span-01"));
+
+        gateway.apply(ExecutionWrite.withoutStateChange(ExecutionFixtures.WORK_ORDER_ID,
+                step(null), event(), ExecutionFixtures.MESSAGE_ID, ExecutionFixtures.NOW.plusSeconds(60)));
+
+        Put outbox = captured().get(1).put();
+        assertEquals(Map.of("traceparent", "00-trace-span-01"),
+                TraceHeaders.fromJson(outbox.item().get("traceContext").s()));
+    }
+
+    @Test
+    void writesTheEventWithoutATraceContextWhenNoneWasCaptured() {
+        when(trace.capture()).thenReturn(Map.of());
+
+        gateway.apply(ExecutionWrite.withoutStateChange(ExecutionFixtures.WORK_ORDER_ID,
+                step(null), event(), ExecutionFixtures.MESSAGE_ID, ExecutionFixtures.NOW.plusSeconds(60)));
+
+        assertFalse(captured().get(1).put().item().containsKey("traceContext"));
     }
 
     @Test

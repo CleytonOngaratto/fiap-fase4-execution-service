@@ -4,6 +4,8 @@ import br.com.fiap.postech.carworkshop.execution.domain.entity.ExecutionItem;
 import br.com.fiap.postech.carworkshop.execution.domain.entity.ExecutionStatus;
 import br.com.fiap.postech.carworkshop.execution.domain.entity.ExecutionStep;
 import br.com.fiap.postech.carworkshop.execution.domain.message.ExecutionEvent;
+import br.com.fiap.postech.carworkshop.execution.infrastructure.observability.TraceContext;
+import br.com.fiap.postech.carworkshop.execution.infrastructure.observability.TraceHeaders;
 import br.com.fiap.postech.carworkshop.execution.usecase.port.out.ExecutionItemRepositoryPort;
 import br.com.fiap.postech.carworkshop.execution.usecase.port.out.ExecutionWrite;
 import br.com.fiap.postech.carworkshop.execution.usecase.port.out.ExecutionWriteResult;
@@ -36,6 +38,9 @@ public class DynamoExecutionItemGateway implements ExecutionItemRepositoryPort {
 
     @Inject
     SagaEnvelopeCodec codec;
+
+    @Inject
+    TraceContext trace;
 
     @ConfigProperty(name = "execution.table-name")
     String tableName;
@@ -139,7 +144,8 @@ public class DynamoExecutionItemGateway implements ExecutionItemRepositoryPort {
         return TransactWriteItem.builder()
                 .put(Put.builder()
                         .tableName(tableName)
-                        .item(ExecutionItemMapper.toOutboxItem(event, codec.writePayload(event.payload())))
+                        .item(ExecutionItemMapper.toOutboxItem(event, codec.writePayload(event.payload()),
+                                TraceHeaders.toJson(trace.capture())))
                         .build())
                 .build();
     }

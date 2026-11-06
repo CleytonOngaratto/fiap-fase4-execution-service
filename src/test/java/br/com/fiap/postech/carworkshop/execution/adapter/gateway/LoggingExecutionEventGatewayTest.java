@@ -4,6 +4,8 @@ import br.com.fiap.postech.carworkshop.execution.domain.message.SagaMessageType;
 import br.com.fiap.postech.carworkshop.execution.support.ExecutionFixtures;
 import org.junit.jupiter.api.Test;
 
+import java.util.Map;
+
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 
 class LoggingExecutionEventGatewayTest {
@@ -14,6 +16,6 @@ class LoggingExecutionEventGatewayTest {
 
         assertDoesNotThrow(() -> gateway.publish(new OutboundMessage(ExecutionFixtures.MESSAGE_ID,
                 SagaMessageType.DIAGNOSIS_CANCELED, 1, ExecutionFixtures.WORK_ORDER_ID,
-                ExecutionFixtures.SAGA_ID, ExecutionFixtures.CORRELATION_ID, "{}")));
+                ExecutionFixtures.SAGA_ID, ExecutionFixtures.CORRELATION_ID, "{}", Map.of())));
     }
 }
