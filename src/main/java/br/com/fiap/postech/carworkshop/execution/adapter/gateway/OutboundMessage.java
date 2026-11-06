@@ -1,5 +1,6 @@
 package br.com.fiap.postech.carworkshop.execution.adapter.gateway;
 
+import java.util.Map;
 import java.util.UUID;
 
 public record OutboundMessage(UUID messageId,
@@ -8,5 +9,6 @@ public record OutboundMessage(UUID messageId,
                               Long workOrderId,
                               UUID sagaId,
                               String correlationId,
-                              String body) {
+                              String body,
+                              Map<String, String> traceHeaders) {
 }

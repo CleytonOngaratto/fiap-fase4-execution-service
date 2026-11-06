@@ -146,7 +146,7 @@ class ExecutionItemMapperTest {
     void readsAnAbsentNumberAsItsDefaultInsteadOfThrowing() {
         Map<String, AttributeValue> outbox = new HashMap<>(ExecutionItemMapper.toOutboxItem(
                 ExecutionEvent.replyTo(ExecutionFixtures.command(SagaMessageType.CANCEL_DIAGNOSIS),
-                        SagaMessageType.DIAGNOSIS_CANCELED, new EmptyPayload(), ExecutionFixtures.NOW), "{}"));
+                        SagaMessageType.DIAGNOSIS_CANCELED, new EmptyPayload(), ExecutionFixtures.NOW), "{}", null));
         outbox.remove(ExecutionItemMapper.VERSION);
 
         assertEquals(1, ExecutionItemMapper.toPendingEvent(outbox).version());
@@ -165,7 +165,7 @@ class ExecutionItemMapperTest {
                 ExecutionFixtures.command(SagaMessageType.CANCEL_DIAGNOSIS),
                 SagaMessageType.DIAGNOSIS_CANCELED, new EmptyPayload(), ExecutionFixtures.NOW);
 
-        Map<String, AttributeValue> item = ExecutionItemMapper.toOutboxItem(event, "{}");
+        Map<String, AttributeValue> item = ExecutionItemMapper.toOutboxItem(event, "{}", null);
         PendingEvent restored = ExecutionItemMapper.toPendingEvent(item);
 
         assertEquals("PENDING", item.get(ExecutionItemMapper.GSI2PK).s());
@@ -180,5 +180,27 @@ class ExecutionItemMapperTest {
         assertEquals(ExecutionFixtures.CORRELATION_ID, restored.correlationId());
         assertEquals(ExecutionFixtures.MESSAGE_ID, restored.causationId());
         assertEquals("{}", restored.payload());
+    }
+
+    @Test
+    void keepsTheTraceContextOfTheOutboxBothWays() {
+        Map<String, AttributeValue> item = ExecutionItemMapper.toOutboxItem(canceled(), "{}",
+                "{\"traceparent\":\"00-trace-span-01\"}");
+
+        assertEquals("{\"traceparent\":\"00-trace-span-01\"}",
+                ExecutionItemMapper.toPendingEvent(item).traceContext());
+    }
+
+    @Test
+    void writesNoTraceContextWhenThereIsNone() {
+        Map<String, AttributeValue> item = ExecutionItemMapper.toOutboxItem(canceled(), "{}", null);
+
+        assertFalse(item.containsKey("traceContext"));
+        assertNull(ExecutionItemMapper.toPendingEvent(item).traceContext());
+    }
+
+    private static ExecutionEvent canceled() {
+        return ExecutionEvent.replyTo(ExecutionFixtures.command(SagaMessageType.CANCEL_DIAGNOSIS),
+                SagaMessageType.DIAGNOSIS_CANCELED, new EmptyPayload(), ExecutionFixtures.NOW);
     }
 }

@@ -159,7 +159,7 @@ class SagaEnvelopeCodecTest {
         PendingEvent event = new PendingEvent(ExecutionFixtures.MESSAGE_ID,
                 SagaMessageType.DIAGNOSIS_CANCELED, 1, ExecutionFixtures.NOW, ExecutionFixtures.SAGA_ID,
                 ExecutionFixtures.WORK_ORDER_ID, ExecutionFixtures.BRANCH, ExecutionFixtures.CORRELATION_ID,
-                UUID.fromString("0b8f1c2e-0000-4000-8000-000000000009"), "{}");
+                UUID.fromString("0b8f1c2e-0000-4000-8000-000000000009"), "{}", null);
 
         JsonNode encoded = codec.decode(codec.encode(event));
 
@@ -180,7 +180,7 @@ class SagaEnvelopeCodecTest {
         PendingEvent event = new PendingEvent(ExecutionFixtures.MESSAGE_ID,
                 SagaMessageType.DIAGNOSIS_STARTED, 1, ExecutionFixtures.NOW, ExecutionFixtures.SAGA_ID,
                 ExecutionFixtures.WORK_ORDER_ID, null, null, null,
-                "{\"startedAt\":\"2026-10-30T12:00:00Z\"}");
+                "{\"startedAt\":\"2026-10-30T12:00:00Z\"}", null);
 
         JsonNode encoded = codec.decode(codec.encode(event));
 

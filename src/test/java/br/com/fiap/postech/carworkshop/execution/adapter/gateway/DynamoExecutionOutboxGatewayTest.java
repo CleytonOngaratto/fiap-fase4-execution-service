@@ -43,7 +43,7 @@ class DynamoExecutionOutboxGatewayTest {
                 ExecutionFixtures.command(SagaMessageType.CANCEL_DIAGNOSIS),
                 SagaMessageType.DIAGNOSIS_CANCELED, new EmptyPayload(), ExecutionFixtures.NOW);
         when(dynamo.query(any(QueryRequest.class))).thenReturn(QueryResponse.builder()
-                .items(ExecutionItemMapper.toOutboxItem(event, "{}"))
+                .items(ExecutionItemMapper.toOutboxItem(event, "{}", null))
                 .build());
 
         List<PendingEvent> pending = gateway.claimPending(10);

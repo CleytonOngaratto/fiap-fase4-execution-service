@@ -4,6 +4,10 @@ import br.com.fiap.postech.carworkshop.execution.adapter.gateway.ExecutionEventP
 import br.com.fiap.postech.carworkshop.execution.adapter.gateway.OutboundMessage;
 import br.com.fiap.postech.carworkshop.execution.adapter.gateway.TestCodec;
 import br.com.fiap.postech.carworkshop.execution.domain.message.SagaMessageType;
+import br.com.fiap.postech.carworkshop.execution.infrastructure.observability.LogContext;
+import br.com.fiap.postech.carworkshop.execution.infrastructure.observability.LogLines;
+import br.com.fiap.postech.carworkshop.execution.infrastructure.observability.TraceContext;
+import br.com.fiap.postech.carworkshop.execution.infrastructure.observability.TraceHeaders;
 import br.com.fiap.postech.carworkshop.execution.support.ExecutionFixtures;
 import br.com.fiap.postech.carworkshop.execution.usecase.port.out.ExecutionOutboxPort;
 import br.com.fiap.postech.carworkshop.execution.usecase.port.out.PendingEvent;
@@ -14,6 +18,7 @@ import org.mockito.ArgumentCaptor;
 import java.time.Clock;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -32,15 +37,18 @@ class OutboxRelayServiceTest {
 
     private ExecutionOutboxPort outbox;
     private ExecutionEventPublisher publisher;
+    private TraceContext trace;
     private OutboxRelayService relay;
 
     @BeforeEach
     void setUp() {
         outbox = mock(ExecutionOutboxPort.class);
         publisher = mock(ExecutionEventPublisher.class);
+        trace = mock(TraceContext.class);
         relay = new OutboxRelayService();
         relay.outbox = outbox;
         relay.publisher = publisher;
+        relay.trace = trace;
         relay.codec = TestCodec.codec();
         relay.clock = Clock.fixed(ExecutionFixtures.NOW, ZoneOffset.UTC);
         relay.batchSize = 10;
@@ -90,6 +98,21 @@ class OutboxRelayServiceTest {
         verify(outbox, never()).markSent(anyLong(), any(UUID.class), any());
     }
 
+    @Test
+    void logsThePublishFailureWithTheContextOfTheEvent() {
+        when(outbox.claimPending(10)).thenReturn(List.of(pending()));
+        doThrow(new IllegalStateException("sns down")).when(publisher).publish(any());
+
+        try (LogLines lines = LogLines.of(OutboxRelayService.class)) {
+            relay.drain();
+
+            assertEquals(List.of(Map.of(
+                    LogContext.CORRELATION_ID, ExecutionFixtures.CORRELATION_ID,
+                    LogContext.SAGA_ID, ExecutionFixtures.SAGA_ID.toString(),
+                    LogContext.BRANCH_ID, ExecutionFixtures.BRANCH)), lines.errors());
+        }
+    }
+
     // Para o lote na primeira falha: a ordem por ordem de servico importa, e nao se publica o evento seguinte
     // da mesma OS sem o anterior ter saido.
     @Test
@@ -112,9 +135,61 @@ class OutboxRelayServiceTest {
         verify(publisher, times(2)).publish(any());
     }
 
+    @Test
+    void publishesEachEventInATransactionThatFollowsItsStoredTrace() {
+        Map<String, String> stored = Map.of("traceparent", "00-trace-span-01", "newrelic", "payload");
+        when(outbox.claimPending(10)).thenReturn(List.of(pending(TraceHeaders.toJson(stored))));
+
+        relay.drain();
+
+        verify(trace).accept(stored);
+        verify(trace).nameTransaction("Scheduled", "execution-outbox-relay");
+        ArgumentCaptor<OutboundMessage> captor = ArgumentCaptor.forClass(OutboundMessage.class);
+        verify(publisher).publish(captor.capture());
+        assertEquals(stored, captor.getValue().traceHeaders());
+    }
+
+    @Test
+    void publishesWithoutTraceHeadersWhenTheStoredContextIsCorrupt() {
+        when(outbox.claimPending(10)).thenReturn(List.of(pending("{\"traceparent\":")));
+        when(outbox.markSent(anyLong(), any(UUID.class), any())).thenReturn(true);
+
+        relay.drain();
+
+        ArgumentCaptor<OutboundMessage> captor = ArgumentCaptor.forClass(OutboundMessage.class);
+        verify(publisher).publish(captor.capture());
+        assertEquals(Map.of(), captor.getValue().traceHeaders());
+        verify(outbox).markSent(ExecutionFixtures.WORK_ORDER_ID, ExecutionFixtures.MESSAGE_ID,
+                ExecutionFixtures.NOW);
+    }
+
+    @Test
+    void reportsThePublishFailureToTheTransactionOfTheEvent() {
+        IllegalStateException failure = new IllegalStateException("sns down");
+        when(outbox.claimPending(10)).thenReturn(List.of(pending()));
+        doThrow(failure).when(publisher).publish(any());
+
+        relay.drain();
+
+        verify(trace).noticeError(failure);
+    }
+
+    @Test
+    void touchesNoTraceWhenThereIsNoPendingEvent() {
+        when(outbox.claimPending(10)).thenReturn(List.of());
+
+        relay.drain();
+
+        verifyNoInteractions(trace);
+    }
+
     private static PendingEvent pending() {
+        return pending(null);
+    }
+
+    private static PendingEvent pending(String traceContext) {
         return new PendingEvent(ExecutionFixtures.MESSAGE_ID, SagaMessageType.DIAGNOSIS_CANCELED, 1,
                 ExecutionFixtures.NOW, ExecutionFixtures.SAGA_ID, ExecutionFixtures.WORK_ORDER_ID,
-                ExecutionFixtures.BRANCH, ExecutionFixtures.CORRELATION_ID, null, "{}");
+                ExecutionFixtures.BRANCH, ExecutionFixtures.CORRELATION_ID, null, "{}", traceContext);
     }
 }

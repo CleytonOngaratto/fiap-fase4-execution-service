@@ -59,6 +59,7 @@ public final class ExecutionItemMapper {
     private static final String CATALOG_ID = "catalogId";
     private static final String DESCRIPTION = "description";
     private static final String QUANTITY = "quantity";
+    private static final String TRACE_CONTEXT = "traceContext";
 
     private ExecutionItemMapper() {
     }
@@ -152,7 +153,8 @@ public final class ExecutionItemMapper {
         return attributes;
     }
 
-    public static Map<String, AttributeValue> toOutboxItem(ExecutionEvent event, String payload) {
+    public static Map<String, AttributeValue> toOutboxItem(ExecutionEvent event, String payload,
+                                                           String traceContext) {
         SagaEnvelope envelope = event.envelope();
         Map<String, AttributeValue> attributes = new HashMap<>();
         attributes.put(PK, text(partitionOf(envelope.workOrderId())));
@@ -169,6 +171,7 @@ public final class ExecutionItemMapper {
         putIfPresent(attributes, BRANCH_ID, envelope.branchId());
         putIfPresent(attributes, CORRELATION_ID, envelope.correlationId());
         putIfPresent(attributes, CAUSATION_ID, asString(envelope.causationId()));
+        putIfPresent(attributes, TRACE_CONTEXT, traceContext);
         return attributes;
     }
 
@@ -183,7 +186,8 @@ public final class ExecutionItemMapper {
                 asText(attributes, BRANCH_ID),
                 asText(attributes, CORRELATION_ID),
                 asUuid(attributes, CAUSATION_ID),
-                asText(attributes, PAYLOAD));
+                asText(attributes, PAYLOAD),
+                asText(attributes, TRACE_CONTEXT));
     }
 
     private static AttributeValue diagnosedList(List<DiagnosedItem> items) {
