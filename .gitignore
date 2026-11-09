@@ -89,6 +89,7 @@ newrelic.jar
 # versiona-se só o modelo sanitizado *.example.postman_environment.json.
 *.postman_environment.json
 !*.example.postman_environment.json
+/docs/api/openapi.json
 
 # ---------------------------------------------------------------------------
 # Terraform — a pasta terraform/ do serviço (banco, filas, target group)
