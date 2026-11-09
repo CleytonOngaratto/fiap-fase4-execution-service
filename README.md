@@ -1,5 +1,8 @@
 # fiap-fase4-execution-service
 
+[![Cobertura](https://sonarcloud.io/api/project_badges/measure?project=CleytonOngaratto_fiap-fase4-execution-service&metric=coverage)](https://sonarcloud.io/summary/overall?id=CleytonOngaratto_fiap-fase4-execution-service&branch=main)
+[![Quality Gate](https://sonarcloud.io/api/project_badges/measure?project=CleytonOngaratto_fiap-fase4-execution-service&metric=alert_status)](https://sonarcloud.io/summary/overall?id=CleytonOngaratto_fiap-fase4-execution-service&branch=main)
+
 Execution Service da Fase 4 do Tech Challenge (FIAP SOAT): **fila de diagnóstico e reparo por filial**, em
 DynamoDB. Quarkus 3.26.3, Java 17, Clean Architecture com ArchUnit.
 
@@ -13,6 +16,35 @@ DynamoDB. Quarkus 3.26.3, Java 17, Clean Architecture com ArchUnit.
 A Saga é **orquestrada**, e o orquestrador vive no OS Service. Este serviço é **participante**: recebe comandos
 numa fila FIFO, guarda o próprio estado e devolve eventos. Ele nunca decide o processo — decide só o que é dele:
 em que ponto da execução cada ordem de serviço está.
+
+```mermaid
+flowchart TB
+    MEC["Mecânico"]
+    OS["OS Service<br/>orquestrador"]
+    GW{{"API Gateway"}}
+
+    subgraph svc["Execution Service"]
+        API["REST<br/>fila, diagnóstico, reparo"]
+        CON["Consumidor de comandos"]
+        REL["Relay do outbox"]
+    end
+
+    DB[("DynamoDB<br/>estado, histórico, inbox, outbox")]
+    CQ[["execution-commands.fifo"]]
+    ET(["execution-events.fifo"])
+    CAT["Catálogo do OS"]
+
+    MEC --> GW
+    GW --> API
+    API --> DB
+    API -.->|"valida os itens (REST)"| CAT
+    OS -->|comandos| CQ
+    CQ --> CON
+    CON --> DB
+    DB --> REL
+    REL -->|eventos| ET
+    ET -->|"os-saga-replies.fifo"| OS
+```
 
 Três regras valem para tudo o que ele faz:
 
@@ -57,6 +89,29 @@ Tópico `execution-events.fifo` (da plataforma), por **outbox**: o evento nasce 
 e o valor fica congelado no snapshot dele. O envelope e o significado de cada campo estão no
 [catálogo de mensagens](https://github.com/CleytonOngaratto/fiap-fase4-os-service/blob/main/docs/arquitetura/catalogo-de-mensagens.md).
 
+## Tecnologias
+
+| Tecnologia | Versão | Uso |
+|---|---|---|
+| Java | **17** | linguagem; imagem `eclipse-temurin:17-jre-jammy` |
+| Quarkus | **3.26.3** | REST, CDI, configuração e agendamento |
+| Amazon DynamoDB (AWS SDK for Java v2) | 2.32.4 | banco do serviço, numa tabela única |
+| AWS SDK for Java v2 (SQS e SNS) | 2.32.4 | fila de comandos e tópico de eventos |
+| SmallRye JWT | 4.6.2 | valida o token RS256 |
+| SmallRye OpenAPI e Swagger UI | 4.0.12 | especificação da API |
+| Micrometer com Prometheus | 1.14.7 | métricas |
+| New Relic Java Agent | 9.4.0 | APM, traço distribuído e logs |
+| JUnit 5 · Mockito · REST Assured | 5.13.4 · 5.18.0 · 5.5.6 | testes de unidade e de API |
+| Testcontainers · WireMock | 1.21.3 · 3.13.2 | testes com DynamoDB Local e filas reais, e o catálogo do OS simulado |
+| ArchUnit | 1.3.0 | regras de arquitetura |
+| JaCoCo | 0.8.12 | cobertura e gate do build |
+| SonarCloud (`sonar-maven-plugin`) | 5.8.0.7211 | análise de qualidade no CI |
+| Trivy | 0.58.0 | varredura de vulnerabilidades no CI |
+| DynamoDB Local · ElasticMQ | 2.5.2 · 1.7.1 | ambiente local e testes |
+| Terraform · provider AWS | 1.15.4 · 6.57.1 | infraestrutura do serviço |
+| Amazon EKS · kubectl | 1.36 (medido em 2026-10-11) · 1.35.9 | execução e deploy |
+| GitHub Actions | — | CI/CD |
+
 ## API
 
 Tudo sob `/execution/v1`. Toda rota de mecânico exige **JWT de ADMIN**; `/info` é pública, porque é o smoke da
@@ -76,6 +131,25 @@ borda. O nome do mecânico sai do **próprio token**, nunca do corpo da requisi�
 **202, não 200:** a resposta diz que o fato foi registrado; o efeito na saga chega depois, quando o relay publica
 o evento. **409 vem do estado:** transição pedida por pessoa recusa quando o item não está no ponto que ela
 pressupõe — ao contrário da transição dirigida pela saga, que simplesmente não acontece e segue.
+
+### Swagger e Postman
+
+| O quê | Onde |
+|---|---|
+| Swagger UI, com o [ambiente local](#ambiente-local) de pé | `http://localhost:8082/swagger-ui/` |
+| OpenAPI em tempo de execução | `http://localhost:8082/execution/v1/q/openapi` |
+| Especificação versionada, gravada pelo build | [`docs/api/openapi.yaml`](docs/api/openapi.yaml) |
+| Collection do Postman | [`docs/api/execution.postman_collection.json`](docs/api/execution.postman_collection.json) |
+| Ambiente de exemplo, com os valores vazios | [`docs/api/gateway.example.postman_environment.json`](docs/api/gateway.example.postman_environment.json) |
+
+O job `build` falha se o `openapi.yaml` versionado divergir do gerado. O Swagger UI e o `/q/*` não passam pelo API Gateway, e as
+rotas públicas são as da allowlist, em
+[`session/locals.tf`](https://github.com/CleytonOngaratto/fiap-fase4-auth-serverless/blob/main/session/locals.tf).
+
+Um item só entra na fila quando a saga manda o comando. Preencha `workOrderId`, `branchId` e `partId` com os da ordem de serviço,
+ou rode antes o [fluxo completo](https://github.com/CleytonOngaratto/fiap-fase4-os-service#como-usar-a-collection) do os-service.
+`baseUrl` é o valor de `/fase4/apigw/url`. Rode uma pasta por vez, pelo Collection Runner ou pelo Newman: concluir e falhar são
+caminhos alternativos, e as esperas não funcionam no "Send".
 
 ### A validação dos itens do diagnóstico
 
@@ -99,8 +173,8 @@ no repositório.
 
 ## Testes
 
-`./mvnw clean verify` — **137 testes, cobertura de linha 99,2%**, gate do JaCoCo em 0,80, ArchUnit 4/4.
-O teste de integração precisa do **Docker ligado**.
+`./mvnw clean verify` roda os testes, as regras do ArchUnit e o gate do JaCoCo. Os números medidos estão em
+[Evidência de cobertura](#evidência-de-cobertura). O teste de integração precisa do **Docker ligado**.
 
 A divisão não é estética. Classe exercitada **só** por `@QuarkusTest` conta **0%** no JaCoCo destes
 repositórios, por um artefato de classloader medido desde a fase anterior. Então:
@@ -116,6 +190,21 @@ repositórios, por um artefato de classloader medido desde a fase anterior. Ent�
 
 Pela mesma razão, o timeout e os limiares do circuito são **parâmetros de construtor**, não anotações: com
 anotações de *fault tolerance* a prova exigiria subir a aplicação, e o cliente contaria zero.
+
+## Evidência de cobertura
+
+| Medida | Valor | Onde se lê |
+|---|---|---|
+| `coverage` do SonarCloud, o número do badge (soma linhas e condições) | **97,7%** | API do SonarCloud, lida em 2026-11-09 |
+| `line_coverage` do SonarCloud | 98,9% | idem |
+| `branch_coverage` do SonarCloud | 93,6% | idem |
+| Testes | 193, nenhuma falha | `./mvnw clean verify`, em 2026-11-09 |
+| JaCoCo `LINE`, o gate do build (mínimo de 80%) | **98,92%** (914 de 924 linhas) | idem |
+
+O badge e o gate medem coisas diferentes: o `coverage` do Sonar soma linhas e condições, e o gate do JaCoCo olha só linhas. Por
+isso os números não coincidem. Nenhuma classe é excluída da medição neste serviço.
+
+![Painel do SonarCloud](docs/img/sonarcloud.png)
 
 ## Deploy
 
@@ -135,6 +224,7 @@ juntos: o `cd.yml` espera no SSM o target group, a fila e a tabela (até 25 min)
 |---|---|
 | `/fase4/vpc/id`, `/fase4/alb/listener-arn` | plataforma ([fiap-fase4-infra-k8s](https://github.com/CleytonOngaratto/fiap-fase4-infra-k8s)), no `terraform/` |
 | `/fase4/ecr/execution/repo-url`, `/fase4/eks/cluster-name`, `/fase4/alb/sg-id`, `/fase4/alb/dns`, `/fase4/sns/execution-events/topic-arn` | plataforma, no `cd.yml` |
+| `/fase4/apigw/url` | [fiap-fase4-auth-serverless](https://github.com/CleytonOngaratto/fiap-fase4-auth-serverless), no smoke do `cd.yml` |
 | `/fase4/os/internal/service-token` | [fiap-fase4-os-service](https://github.com/CleytonOngaratto/fiap-fase4-os-service) — a credencial de serviço do endpoint interno do catálogo |
 | `/fase4/jwt/public-key`, `/fase4/newrelic/license-key` | bootstrap manual (sobrevive ao teardown) |
 
@@ -162,3 +252,12 @@ O namespace tem a label `elbv2.k8s.aws/pod-readiness-gate-inject: enabled`: o po
 dele está `healthy` no target group, e o `preStop` segura o encerramento enquanto o ALB drena o alvo.
 
 A entrada é sempre pelo API Gateway; `/q/*` (health, métricas, OpenAPI) só dentro da VPC.
+
+## Decisões
+
+| ADR | Decisão |
+|---|---|
+| [ADR-001](https://github.com/CleytonOngaratto/fiap-fase4-os-service/blob/main/docs/arquitetura/adr/ADR-001-saga-orquestrada.md) | Saga orquestrada, com este serviço como participante |
+| [ADR-006](https://github.com/CleytonOngaratto/fiap-fase4-os-service/blob/main/docs/arquitetura/adr/ADR-006-mensageria.md) | Mensageria: SNS FIFO, SQS FIFO e outbox transacional |
+| [ADR-009](https://github.com/CleytonOngaratto/fiap-fase4-os-service/blob/main/docs/arquitetura/adr/ADR-009-tabela-unica-do-execution.md) | Tabela única no DynamoDB, com a outbox dentro da transação |
+| [ADR-011](https://github.com/CleytonOngaratto/fiap-fase4-os-service/blob/main/docs/arquitetura/adr/ADR-011-bancos-sql-e-nosql.md) | DynamoDB neste serviço e PostgreSQL nos outros dois |
