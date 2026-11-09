@@ -1,0 +1,405 @@
+{
+  "info": {
+    "name": "Execution Service",
+    "description": "As rotas do Execution Service, com os mesmos nomes de variável do fluxo completo do os-service. Um item só entra na fila quando a saga manda o comando: preencha workOrderId e branchId com os da ordem de serviço, ou rode antes o fluxo completo. Rode uma pasta por vez, pelo Collection Runner ou pelo Newman: concluir e falhar são caminhos alternativos.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "serviceId",
+      "value": "1",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Autenticação",
+      "description": "Pelo API Gateway.",
+      "item": [
+        {
+          "name": "Login do ADMIN",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));",
+                  "pm.environment.set('adminToken', pm.response.json().token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/carworkshop/v1/auth/login",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{adminUsername}}\",\n  \"password\": \"{{adminPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Consultas",
+      "item": [
+        {
+          "name": "Informações do serviço",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/execution/v1/info",
+            "auth": {
+              "type": "noauth"
+            }
+          }
+        },
+        {
+          "name": "Fila de diagnóstico da filial",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/execution/v1/queue?branchId={{branchId}}&status=DIAGNOSIS_QUEUED&limit=25",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Diagnóstico",
+      "item": [
+        {
+          "name": "Iniciar o diagnóstico",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const attempts = Number(pm.environment.get('attempts') || 0);",
+                  "const ready = pm.response.code === 202;",
+                  "if (!ready && attempts < 40) {",
+                  "  pm.environment.set('attempts', attempts + 1);",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  setTimeout(() => {}, 3000);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('attempts');",
+                  "pm.test('responde 202', () => pm.response.to.have.status(202));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/execution/v1/work-orders/{{workOrderId}}/diagnosis/start",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Concluir o diagnóstico",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const attempts = Number(pm.environment.get('attempts') || 0);",
+                  "const ready = pm.response.code === 202;",
+                  "if (!ready && attempts < 40) {",
+                  "  pm.environment.set('attempts', attempts + 1);",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  setTimeout(() => {}, 3000);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('attempts');",
+                  "pm.test('responde 202', () => pm.response.to.have.status(202));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/execution/v1/work-orders/{{workOrderId}}/diagnosis/complete",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"Troca do filtro e revisão\",\n  \"items\": [\n    {\n      \"type\": \"SERVICE\",\n      \"catalogId\": {{serviceId}},\n      \"quantity\": 1\n    },\n    {\n      \"type\": \"PART\",\n      \"catalogId\": {{partId}},\n      \"quantity\": 2\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Reparo",
+      "item": [
+        {
+          "name": "Iniciar o reparo",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const attempts = Number(pm.environment.get('attempts') || 0);",
+                  "const ready = pm.response.code === 202;",
+                  "if (!ready && attempts < 40) {",
+                  "  pm.environment.set('attempts', attempts + 1);",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  setTimeout(() => {}, 3000);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('attempts');",
+                  "pm.test('responde 202', () => pm.response.to.have.status(202));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/execution/v1/work-orders/{{workOrderId}}/repair/start",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Concluir o reparo",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const attempts = Number(pm.environment.get('attempts') || 0);",
+                  "const ready = pm.response.code === 202;",
+                  "if (!ready && attempts < 40) {",
+                  "  pm.environment.set('attempts', attempts + 1);",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  setTimeout(() => {}, 3000);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('attempts');",
+                  "pm.test('responde 202', () => pm.response.to.have.status(202));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/execution/v1/work-orders/{{workOrderId}}/repair/complete",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Falha no diagnóstico",
+      "item": [
+        {
+          "name": "Registrar diagnóstico inviável",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const attempts = Number(pm.environment.get('attempts') || 0);",
+                  "const ready = pm.response.code === 202;",
+                  "if (!ready && attempts < 40) {",
+                  "  pm.environment.set('attempts', attempts + 1);",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  setTimeout(() => {}, 3000);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('attempts');",
+                  "pm.test('responde 202', () => pm.response.to.have.status(202));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/execution/v1/work-orders/{{workOrderId}}/diagnosis/fail",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"sem reparo viável\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Falha no reparo",
+      "item": [
+        {
+          "name": "Registrar falha no reparo",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const attempts = Number(pm.environment.get('attempts') || 0);",
+                  "const ready = pm.response.code === 202;",
+                  "if (!ready && attempts < 40) {",
+                  "  pm.environment.set('attempts', attempts + 1);",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  setTimeout(() => {}, 3000);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('attempts');",
+                  "pm.test('responde 202', () => pm.response.to.have.status(202));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/execution/v1/work-orders/{{workOrderId}}/repair/fail",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"peça não serviu\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
