@@ -138,7 +138,12 @@
           ],
           "request": {
             "method": "POST",
-            "header": [],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "url": "{{baseUrl}}/execution/v1/work-orders/{{workOrderId}}/diagnosis/start",
             "auth": {
               "type": "bearer",
@@ -233,7 +238,12 @@
           ],
           "request": {
             "method": "POST",
-            "header": [],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "url": "{{baseUrl}}/execution/v1/work-orders/{{workOrderId}}/repair/start",
             "auth": {
               "type": "bearer",
@@ -271,7 +281,12 @@
           ],
           "request": {
             "method": "POST",
-            "header": [],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "url": "{{baseUrl}}/execution/v1/work-orders/{{workOrderId}}/repair/complete",
             "auth": {
               "type": "bearer",
