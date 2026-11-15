@@ -14,7 +14,7 @@ class InfoControllerTest {
         given().when().get("/info").then()
                 .statusCode(200)
                 .body("name", is("execution-service"))
-                .body("version", is("1.0.0-SNAPSHOT"));
+                .body("version", is("1.0.0"));
     }
 
     @Test
