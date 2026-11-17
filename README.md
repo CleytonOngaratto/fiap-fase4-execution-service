@@ -109,7 +109,7 @@ e o valor fica congelado no snapshot dele. O envelope e o significado de cada ca
 | Trivy | 0.58.0 | varredura de vulnerabilidades no CI |
 | DynamoDB Local · ElasticMQ | 2.5.2 · 1.7.1 | ambiente local e testes |
 | Terraform · provider AWS | 1.15.4 · 6.57.1 | infraestrutura do serviço |
-| Amazon EKS · kubectl | 1.36 (medido em 2026-10-11) · 1.35.9 | execução e deploy |
+| Amazon EKS · kubectl | 1.37 (medido em 2026-11-13) · 1.35.9 | execução e deploy; o kubectl fica fora da política de ±1 versão e funcionou em 2026-11-13 e 2026-11-15, em apply, rollout, smoke e e2e |
 | GitHub Actions | — | CI/CD |
 
 ## API
