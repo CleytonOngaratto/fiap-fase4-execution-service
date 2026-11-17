@@ -40,7 +40,8 @@ jobs:
           cache: maven
 
       - name: Build and test with Maven
-        run: mvn -B clean verify
+        # O Docker do runner recusa a API 1.32 que o Testcontainers negocia: mínimo 1.40 desde 2026-11-17.
+        run: mvn -B clean verify -Dapi.version=1.44
 
   deploy:
     runs-on: ubuntu-latest

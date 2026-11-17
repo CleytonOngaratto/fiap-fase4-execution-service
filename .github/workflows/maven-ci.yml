@@ -34,7 +34,8 @@ jobs:
       - name: Build, test and analyze with Maven
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        run: mvn -B clean verify org.sonarsource.scanner.maven:sonar-maven-plugin:sonar
+        # O Docker do runner recusa a API 1.32 que o Testcontainers negocia: mínimo 1.40 desde 2026-11-17.
+        run: mvn -B clean verify -Dapi.version=1.44 org.sonarsource.scanner.maven:sonar-maven-plugin:sonar
 
       - name: Check that the build wrote the OpenAPI schema and that it matches the versioned one
         run: |
